@@ -1,13 +1,26 @@
 /**
- * Partition native TextEditor control/toolbar ItemList contributions.
- * Respects Flarum ItemList priority order and production topology:
- * - Markdown v1.8.1 contributes one `markdown` toolbar item (nested buttons).
+ * Partition native TextEditor control/toolbar contributions for mobile.
+ *
+ * Production topology (Flarum 1.8.19):
+ * - Markdown v1.8.1 contributes one `markdown` toolbar item with ~11 nested buttons.
+ *   It must NEVER count as a single visible 44px action — always overflow.
  * - Mentions / Emoji contribute toolbar items.
  * - FoF Upload contributes `fof-upload` / `fof-upload-media` via controlItems().
- * - Preview is a control item; submit is excluded from overflow partitioning.
+ * - Preview is a control item; submit is excluded from partitioning.
+ *
+ * Visible budget: at most 4 ordinary actions (+ overflow trigger + submit outside).
  */
 
-export const VISIBLE_PRIORITY = ['upload', 'media', 'mention', 'markdown', 'emoji'];
+/** Preferred visible strip when authorized — markdown intentionally absent. */
+export const VISIBLE_PRIORITY = ['upload', 'media', 'mention', 'emoji'];
+
+/** Always overflow regardless of remaining visible slots. */
+export const FORCE_OVERFLOW_CLASSES = ['markdown', 'preview'];
+
+export const MAX_VISIBLE_ACTIONS = 4;
+export const HIT_PX = 44;
+export const INLINE_GAP_PX = 2;
+export const EDGE_PADDING_PX = 16;
 
 /**
  * Ordered keys from an ItemList, highest priority first (Flarum toArray order).
@@ -27,9 +40,6 @@ export function orderedItemKeys(itemList) {
     .map((entry) => entry.key);
 }
 
-/**
- * Heuristic classifiers for Flarum / FoF action keys.
- */
 export function classifyActionKey(key) {
   const k = String(key || '').toLowerCase();
   if (!k) {
@@ -77,20 +87,16 @@ export function classifyToolbarKey(key) {
 }
 
 /**
- * @typedef {{ source: 'control' | 'toolbar', key: string }} ActionRef
+ * @typedef {{ source: 'control' | 'toolbar', key: string, vnode?: unknown }} ActionRef
  */
 
 /**
- * Partition control + toolbar keys into visible primary actions and overflow.
- * Preserves ItemList priority order within each source, then merges by priority class.
- *
  * @param {{ controlKeys?: string[], toolbarKeys?: string[] }} lists
- * @param {{ maxVisible?: number, narrow?: boolean }} [options]
+ * @param {{ maxVisible?: number }} [options]
  * @returns {{ visible: ActionRef[], overflow: ActionRef[] }}
  */
 export function partitionComposerActions(lists = {}, options = {}) {
-  const maxVisible = typeof options.maxVisible === 'number' ? options.maxVisible : 5;
-  const narrow = !!options.narrow;
+  const maxVisible = typeof options.maxVisible === 'number' ? options.maxVisible : MAX_VISIBLE_ACTIONS;
 
   /** @type {ActionRef[]} */
   const ordered = [];
@@ -116,10 +122,12 @@ export function partitionComposerActions(lists = {}, options = {}) {
   /** @type {ActionRef[]} */
   const visible = [];
   const claimed = new Set();
-
   const claimKey = (ref) => `${ref.source}:${ref.key}`;
 
   for (const cls of VISIBLE_PRIORITY) {
+    if (FORCE_OVERFLOW_CLASSES.includes(cls)) {
+      continue;
+    }
     if (visible.length >= maxVisible) {
       break;
     }
@@ -141,21 +149,17 @@ export function partitionComposerActions(lists = {}, options = {}) {
     overflow.push(ref);
   }
 
-  // Narrow screens: move preview out of the primary strip if it was claimed.
-  if (narrow) {
-    for (let i = visible.length - 1; i >= 0; i -= 1) {
-      if (classifyActionKey(visible[i].key) === 'preview') {
-        overflow.unshift(visible.splice(i, 1)[0]);
-      }
+  // Safety: never leave markdown/preview in the visible strip.
+  for (let i = visible.length - 1; i >= 0; i -= 1) {
+    const cls = classifyActionKey(visible[i].key);
+    if (FORCE_OVERFLOW_CLASSES.includes(cls)) {
+      overflow.unshift(visible.splice(i, 1)[0]);
     }
   }
 
   return { visible, overflow };
 }
 
-/**
- * Legacy key-only partition (tests / callers that only have toolbar keys).
- */
 export function partitionToolbarKeys(keys, options = {}) {
   const { visible, overflow } = partitionComposerActions({ toolbarKeys: keys }, options);
   return {
@@ -164,6 +168,29 @@ export function partitionToolbarKeys(keys, options = {}) {
   };
 }
 
-export function assertNoHorizontalScrollbarIntent(visibleCount, maxVisible = 5) {
+/**
+ * Estimate docked footer width using real action slot widths (not markdown key count).
+ * Assumes list-item margin-right has been reset to 0.
+ */
+export function estimateDockedFooterWidthPx(options = {}) {
+  const visibleActionCount = typeof options.visibleActionCount === 'number' ? options.visibleActionCount : 0;
+  const hasOverflow = !!options.hasOverflow;
+  const hasSubmit = options.hasSubmit !== false;
+  const hit = typeof options.hit === 'number' ? options.hit : HIT_PX;
+  const gap = typeof options.gap === 'number' ? options.gap : INLINE_GAP_PX;
+  const edgePadding = typeof options.edgePadding === 'number' ? options.edgePadding : EDGE_PADDING_PX;
+  const itemMarginRight = typeof options.itemMarginRight === 'number' ? options.itemMarginRight : 0;
+
+  const buttons = visibleActionCount + (hasOverflow ? 1 : 0) + (hasSubmit ? 1 : 0);
+  const gaps = Math.max(0, buttons - 1) * gap;
+  const margins = buttons * itemMarginRight;
+  return edgePadding * 2 + buttons * hit + gaps + margins;
+}
+
+export function assertFitsViewport(widthPx, viewportPx = 360) {
+  return widthPx <= viewportPx;
+}
+
+export function assertNoHorizontalScrollbarIntent(visibleCount, maxVisible = MAX_VISIBLE_ACTIONS) {
   return visibleCount <= maxVisible;
 }

@@ -31,15 +31,20 @@ import {
   isReplyContextInSync,
 } from './presentation/replyContext';
 import {
-  orderedItemKeys,
-  partitionComposerActions,
-} from './presentation/toolbarOverflow';
+  extractNativeFooterActions,
+  partitionExtractedActions,
+  normalizeChildren,
+  findNativeControlsFooter,
+  reflowMobileTextEditorView,
+} from './presentation/nativeFooterReflow';
 import {
   applyDiscussionInset,
   clearDiscussionInset,
   measureDockHeight,
   restoreScrollTop,
 } from './presentation/scrollInset';
+
+export { reflowMobileTextEditorView, findNativeControlsFooter };
 
 function resolveEditPostComposer() {
   const compat = typeof flarum !== 'undefined' && flarum.core && flarum.core.compat;
@@ -98,11 +103,6 @@ function restoreStreamScroll() {
   }
 }
 
-function getViewportWidthSafe() {
-  if (typeof window === 'undefined') return 1024;
-  return (window.visualViewport && window.visualViewport.width) || window.innerWidth || 1024;
-}
-
 function getViewportHeightSafe() {
   if (typeof window === 'undefined') return 800;
   return (window.visualViewport && window.visualViewport.height) || window.innerHeight || 800;
@@ -144,32 +144,43 @@ export function findEditorNode(root) {
   );
 }
 
-function renderItem(itemList, key) {
-  const item = itemList && itemList.items && itemList.items[key];
-  if (!item) {
+/**
+ * Overflow Dropdown children: preserve original VNodes (MarkdownToolbar intact).
+ * Control items arrive as already-wrapped <li>; unwrap to content for the menu.
+ */
+function overflowMenuChild(action) {
+  if (!action || !action.vnode) {
     return null;
   }
-  return <li className={`item-${key}`}>{item.content}</li>;
+  if (action.wrapLi) {
+    return action.vnode;
+  }
+  const children = normalizeChildren(action.vnode.children);
+  return children.length === 1 ? children[0] : children;
+}
+
+function visibleStripChild(action) {
+  if (!action || !action.vnode) {
+    return null;
+  }
+  if (!action.wrapLi) {
+    return action.vnode;
+  }
+  return <li className={`item-${action.key}`}>{action.vnode}</li>;
 }
 
 /**
- * Mobile footer: same control/toolbar ItemList VNodes, priority-ordered,
- * with overflow via Flarum Dropdown (portal/menu outside clipping toolbar).
+ * Mobile footer from VNodes already created by one native TextEditor.view().
+ * Does not call controlItems() or toolbarItems() again.
+ * Overflow uses Flarum's native Dropdown (mobile bottom-sheet behavior on phone).
  */
-function renderMobileControls(component, controls, toolbar) {
-  const controlKeys = orderedItemKeys(controls);
-  const toolbarKeys = orderedItemKeys(toolbar);
-  const { visible, overflow } = partitionComposerActions(
-    { controlKeys, toolbarKeys },
-    { maxVisible: 5, narrow: getViewportWidthSafe() < 400 }
-  );
-
-  const submit = controls.items && controls.items.submit ? controls.items.submit.content : null;
+function renderMobileControlsFromExtracted(partitioned) {
   const overflowLabel = app.translator.trans('flatrate-composer-ui.forum.toolbar_overflow');
+  const { visible, overflow, submitLi } = partitioned;
 
   return (
     <ul className="TextEditor-controls Composer-footer FlatrateComposer-toolbar" role="toolbar">
-      {visible.map((ref) => renderItem(ref.source === 'control' ? controls : toolbar, ref.key))}
+      {visible.map((action) => visibleStripChild(action))}
       {overflow.length ? (
         <li className="item-flatrateOverflow FlatrateComposer-overflow">
           <Dropdown
@@ -181,15 +192,11 @@ function renderMobileControls(component, controls, toolbar) {
             label={overflowLabel}
             accessibleToggleLabel={overflowLabel}
           >
-            {overflow.map((ref) => {
-              const list = ref.source === 'control' ? controls : toolbar;
-              const item = list.items && list.items[ref.key];
-              return item ? item.content : null;
-            })}
+            {overflow.map((action) => overflowMenuChild(action))}
           </Dropdown>
         </li>
       ) : null}
-      {submit ? <li className="item-submit App-primaryControl">{submit}</li> : null}
+      {submitLi}
     </ul>
   );
 }
@@ -430,6 +437,8 @@ export default function extendComposer() {
    *     .TextEditor-editorContainer   // ALWAYS first child from original() — owns BasicEditorDriver
    *     ul.TextEditor-controls        // second child (may be reflowed on mobile)
    *
+   * Single ItemList evaluation: original() already ran controlItems()/toolbarItems().
+   * Mobile only rearranges those VNodes — never re-invokes the extension points.
    * Never insert presentation chrome before the editorContainer and never
    * replace the original editorContainer vnode when toggling presentation.
    */
@@ -443,9 +452,14 @@ export default function extendComposer() {
     vnode.attrs = vnode.attrs || {};
     vnode.attrs.className = classList(vnode.attrs.className, 'TextEditor--flatrateMobile');
 
-    const controls = this.controlItems();
-    const toolbar = this.toolbarItems();
-    const mobileFooter = renderMobileControls(this, controls, toolbar);
+    const footer = findNativeControlsFooter(vnode);
+    if (!footer) {
+      return vnode;
+    }
+
+    const extracted = extractNativeFooterActions(footer);
+    const partitioned = partitionExtractedActions(extracted);
+    const mobileFooter = renderMobileControlsFromExtracted(partitioned);
 
     // Keep original editorContainer identity/position; only replace the controls list.
     if (Array.isArray(vnode.children) && vnode.children.length) {

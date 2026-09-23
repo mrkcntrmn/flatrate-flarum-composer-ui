@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   isMobileViewport,
@@ -28,13 +31,28 @@ import {
   partitionToolbarKeys,
   classifyActionKey,
   assertNoHorizontalScrollbarIntent,
+  estimateDockedFooterWidthPx,
+  assertFitsViewport,
+  MAX_VISIBLE_ACTIONS,
+  HIT_PX,
+  INLINE_GAP_PX,
+  EDGE_PADDING_PX,
 } from '../src/forum/presentation/toolbarOverflow.js';
+import {
+  extractNativeFooterActions,
+  partitionExtractedActions,
+  reflowMobileTextEditorView,
+  countSubmitVnodes,
+} from '../src/forum/presentation/nativeFooterReflow.js';
 import {
   applyDiscussionInset,
   clearDiscussionInset,
   measureDockHeight,
   restoreScrollTop,
 } from '../src/forum/presentation/scrollInset.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(__dirname, '../..');
 
 function mockEl(initialPadding = '') {
   return {
@@ -51,6 +69,104 @@ function mockEl(initialPadding = '') {
     },
     removeAttribute(name) {
       delete this.attrs[name];
+    },
+  };
+}
+
+/**
+ * Production-shaped native TextEditor footer VNode after one ItemList evaluation.
+ * Markdown is a single toolbar child containing eleven nested formatting buttons.
+ */
+function buildNativeTextEditorVnode(hooks) {
+  const controlItems = hooks.controlItems();
+  const toolbarItems = hooks.toolbarItems();
+
+  const toolbarChildren = Object.keys(toolbarItems.items)
+    .sort((a, b) => (toolbarItems.items[b].priority || 0) - (toolbarItems.items[a].priority || 0))
+    .map((key) => ({
+      tag: toolbarItems.items[key].tag || 'div',
+      attrs: { key, className: toolbarItems.items[key].className || `ToolbarItem-${key}` },
+      children: toolbarItems.items[key].children || [toolbarItems.items[key].content],
+    }));
+
+  const controlChildren = Object.keys(controlItems.items)
+    .sort((a, b) => (controlItems.items[b].priority || 0) - (controlItems.items[a].priority || 0))
+    .map((key) => ({
+      tag: 'li',
+      attrs: {
+        className:
+          key === 'submit'
+            ? `item-${key} App-primaryControl`
+            : `item-${key}`,
+      },
+      children: [controlItems.items[key].content],
+    }));
+
+  return {
+    tag: 'div',
+    attrs: { className: 'TextEditor' },
+    children: [
+      {
+        tag: 'div',
+        attrs: { className: 'TextEditor-editorContainer' },
+        children: [{ tag: 'textarea', attrs: { className: 'TextEditor-editor' }, children: [] }],
+      },
+      {
+        tag: 'ul',
+        attrs: { className: 'TextEditor-controls Composer-footer' },
+        children: [
+          {
+            tag: 'li',
+            attrs: { className: 'TextEditor-toolbar' },
+            children: toolbarChildren,
+          },
+          ...controlChildren,
+        ],
+      },
+    ],
+  };
+}
+
+function productionHooks() {
+  let controlCalls = 0;
+  let toolbarCalls = 0;
+
+  // Eleven nested Markdown buttons — must travel as one intact toolbar VNode.
+  const markdownButtons = Array.from({ length: 11 }, (_, i) => ({
+    tag: 'button',
+    attrs: { className: 'Button Button--icon', type: 'button', 'data-md': i },
+    children: [],
+  }));
+
+  return {
+    controlCalls: () => controlCalls,
+    toolbarCalls: () => toolbarCalls,
+    controlItems() {
+      controlCalls += 1;
+      return {
+        items: {
+          submit: { content: { tag: 'button', attrs: { type: 'submit' }, children: ['Post'] }, priority: 0 },
+          preview: { content: { tag: 'button', attrs: { className: 'Button' }, children: ['Preview'] }, priority: 10 },
+          'fof-upload': { content: { tag: 'button', attrs: { className: 'Button' }, children: ['Upload'] }, priority: 50 },
+          'fof-upload-media': { content: { tag: 'button', attrs: { className: 'Button' }, children: ['Media'] }, priority: 40 },
+        },
+      };
+    },
+    toolbarItems() {
+      toolbarCalls += 1;
+      return {
+        items: {
+          markdown: {
+            content: 'MarkdownToolbar',
+            className: 'MarkdownToolbar',
+            children: markdownButtons,
+            priority: 100,
+          },
+          mention: { content: { tag: 'button', attrs: { className: 'Button' }, children: ['@'] }, priority: 50 },
+          emoji: { content: { tag: 'button', attrs: { className: 'Button' }, children: [':)'] }, priority: 40 },
+          'mystery-ext': { content: { tag: 'button', attrs: { className: 'Button' }, children: ['?'] }, priority: 0 },
+        },
+      };
     },
   };
 }
@@ -141,8 +257,7 @@ test('ItemList keys are ordered by priority', () => {
   assert.deepEqual(orderedItemKeys(list), ['high', 'mid', 'low']);
 });
 
-test('production-shaped Markdown / Mentions / Emoji / FoF Upload / preview partition', () => {
-  // Flarum 1.8 topology fixtures
+test('markdown is always overflow; upload/media/mention/emoji visible; submit once', () => {
   const controlKeys = ['submit', 'preview', 'fof-upload', 'fof-upload-media'];
   const toolbarKeys = ['markdown', 'mention', 'emoji', 'mystery-ext'];
 
@@ -153,24 +268,22 @@ test('production-shaped Markdown / Mentions / Emoji / FoF Upload / preview parti
 
   const { visible, overflow } = partitionComposerActions(
     { controlKeys, toolbarKeys },
-    { maxVisible: 5, narrow: true }
+    { maxVisible: MAX_VISIBLE_ACTIONS }
   );
 
   const visibleKeys = visible.map((r) => r.key);
   const overflowKeys = overflow.map((r) => r.key);
 
-  assert.ok(visibleKeys.includes('fof-upload'));
-  assert.ok(visibleKeys.includes('fof-upload-media'));
-  assert.ok(visibleKeys.includes('mention'));
-  assert.ok(visibleKeys.includes('markdown'));
-  assert.ok(!visibleKeys.includes('submit'));
+  assert.deepEqual(visibleKeys, ['fof-upload', 'fof-upload-media', 'mention', 'emoji']);
+  assert.ok(!visibleKeys.includes('markdown'), 'markdown must never be a top-level visible action');
+  assert.ok(overflowKeys.includes('markdown'));
   assert.ok(overflowKeys.includes('preview'));
   assert.ok(overflowKeys.includes('mystery-ext'));
-  assert.ok(overflowKeys.includes('emoji') || visibleKeys.includes('emoji'));
-  assert.equal(assertNoHorizontalScrollbarIntent(visible.length, 5), true);
+  assert.ok(!visibleKeys.includes('submit'));
+  assert.ok(!overflowKeys.includes('submit'));
+  assert.equal(visible.length, 4);
+  assert.equal(assertNoHorizontalScrollbarIntent(visible.length, MAX_VISIBLE_ACTIONS), true);
 
-  // Priority order within toolbar source is preserved relative to input order
-  // when priorities are equal — use orderedItemKeys at the call site.
   const toolbarList = {
     items: {
       emoji: { priority: 10 },
@@ -180,9 +293,89 @@ test('production-shaped Markdown / Mentions / Emoji / FoF Upload / preview parti
   };
   assert.deepEqual(orderedItemKeys(toolbarList), ['markdown', 'mention', 'emoji']);
 
-  const legacy = partitionToolbarKeys(['markdown', 'mention', 'emoji', 'spoiler'], { maxVisible: 3 });
-  assert.ok(legacy.visible.includes('markdown'));
+  const legacy = partitionToolbarKeys(['markdown', 'mention', 'emoji', 'spoiler'], {
+    maxVisible: MAX_VISIBLE_ACTIONS,
+  });
+  assert.ok(!legacy.visible.includes('markdown'));
+  assert.ok(legacy.overflow.includes('markdown'));
   assert.ok(legacy.overflow.includes('spoiler'));
+  assert.ok(legacy.visible.includes('mention'));
+  assert.ok(legacy.visible.includes('emoji'));
+});
+
+test('360px docked budget includes buttons, gaps, padding, and zero list-item margins', () => {
+  // 4 visible + overflow trigger + submit = 6 hits
+  const width = estimateDockedFooterWidthPx({
+    visibleActionCount: 4,
+    hasOverflow: true,
+    hasSubmit: true,
+    hit: HIT_PX,
+    gap: INLINE_GAP_PX,
+    edgePadding: EDGE_PADDING_PX,
+    itemMarginRight: 0,
+  });
+  // 16*2 + 6*44 + 5*2 = 32 + 264 + 10 = 306
+  assert.equal(width, 306);
+  assert.equal(assertFitsViewport(width, 360), true);
+
+  const withInheritedMargins = estimateDockedFooterWidthPx({
+    visibleActionCount: 4,
+    hasOverflow: true,
+    hasSubmit: true,
+    itemMarginRight: 10,
+  });
+  assert.equal(assertFitsViewport(withInheritedMargins, 360), false);
+
+  const lessSource = readFileSync(join(repoRoot, 'resources/less/composer-toolbar.less'), 'utf8');
+  assert.ok(lessSource.includes('.FlatrateComposer-toolbar'));
+  assert.match(lessSource, /> li \{[\s\S]*?margin-right:\s*0;/);
+});
+
+test('instrumented controlItems/toolbarItems each run once per mobile render', () => {
+  const hooks = productionHooks();
+  const nativeVnode = buildNativeTextEditorVnode(hooks);
+
+  assert.equal(hooks.controlCalls(), 1, 'native view evaluates controlItems once');
+  assert.equal(hooks.toolbarCalls(), 1, 'native view evaluates toolbarItems once');
+
+  const reflowed = reflowMobileTextEditorView(nativeVnode, { maxVisible: MAX_VISIBLE_ACTIONS });
+  assert.ok(reflowed);
+  assert.equal(hooks.controlCalls(), 1, 'reflow must not re-call controlItems');
+  assert.equal(hooks.toolbarCalls(), 1, 'reflow must not re-call toolbarItems');
+
+  assert.equal(
+    reflowed.editorContainer.attrs.className,
+    'TextEditor-editorContainer',
+    'editorContainer remains first-child source'
+  );
+
+  const visibleKeys = reflowed.partitioned.visible.map((a) => a.key);
+  const overflowKeys = reflowed.partitioned.overflow.map((a) => a.key);
+
+  assert.deepEqual(visibleKeys, ['fof-upload', 'fof-upload-media', 'mention', 'emoji']);
+  assert.ok(overflowKeys.includes('markdown'));
+  assert.ok(overflowKeys.includes('preview'));
+  assert.ok(overflowKeys.includes('mystery-ext'));
+  assert.equal(reflowed.submitCount, 1);
+
+  const markdownAction = reflowed.partitioned.overflow.find((a) => a.key === 'markdown');
+  assert.ok(markdownAction);
+  assert.equal(normalizeChildrenCount(markdownAction.vnode), 11, 'MarkdownToolbar stays intact with 11 buttons');
+});
+
+test('native footer extract preserves submit once and keeps markdown overflow', () => {
+  const hooks = productionHooks();
+  const native = buildNativeTextEditorVnode(hooks);
+  const footer = native.children[1];
+  const extracted = extractNativeFooterActions(footer);
+  const partitioned = partitionExtractedActions(extracted);
+
+  assert.ok(extracted.submitLi);
+  assert.equal(countSubmitVnodes([...partitioned.visible.map((a) => a.vnode), partitioned.submitLi]), 1);
+
+  assert.ok(!partitioned.visible.some((a) => a.key === 'markdown'));
+  assert.ok(partitioned.overflow.some((a) => a.key === 'markdown'));
+  assert.equal(partitioned.visible.length, 4);
 });
 
 test('discussion inset preserves empty original padding across repeated applies', () => {
@@ -211,3 +404,9 @@ test('discussion inset preserves empty original padding across repeated applies'
   assert.equal(restoreScrollTop(scroller, 99), true);
   assert.equal(scroller.scrollTop, 99);
 });
+
+function normalizeChildrenCount(vnode) {
+  if (!vnode) return 0;
+  if (Array.isArray(vnode.children)) return vnode.children.length;
+  return 0;
+}

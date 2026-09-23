@@ -21,6 +21,9 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        // Reset Flarum's inherited TextEditor-controls list spacing so the
+        // 360px docked budget is buttons + gaps + padding only (no 10px margins).
+        margin-right: 0;
       }
 
       .Button,
@@ -53,7 +56,9 @@
       position: relative;
     }
 
-    // Flarum Dropdown menu — open upward; not clipped by the toolbar.
+    // Flarum native Dropdown — on phone this is the bottom-sheet menu pattern,
+    // not a portal. Keep overflow:visible on the toolbar so the sheet is usable;
+    // Escape / backdrop / outside-close remain Flarum's own Dropdown behavior.
     .FlatrateComposer-overflowDropdown {
       .Dropdown-menu,
       .FlatrateComposer-overflowMenu {
@@ -63,10 +68,23 @@
         z-index: calc(~"var(--zindex-composer) + 20");
       }
 
-      .Dropdown-menu > li .Button,
-      .FlatrateComposer-overflowMenu .Button {
-        min-height: var(--fr-composer-hit);
+      // Intact MarkdownToolbar / ButtonGroup inside the overflow menu:
+      // each formatting button stays individually tappable.
+      .MarkdownToolbar,
+      .ButtonGroup,
+      .item-markdown {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
         width: 100%;
+      }
+
+      .Dropdown-menu > li .Button,
+      .FlatrateComposer-overflowMenu .Button,
+      .MarkdownToolbar .Button,
+      .ButtonGroup .Button {
+        min-height: var(--fr-composer-hit);
+        min-width: var(--fr-composer-hit);
         justify-content: flex-start;
       }
     }
