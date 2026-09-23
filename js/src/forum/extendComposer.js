@@ -36,6 +36,7 @@ import {
   normalizeChildren,
   findNativeControlsFooter,
   reflowMobileTextEditorView,
+  classNameOf,
 } from './presentation/nativeFooterReflow';
 import {
   applyDiscussionInset,
@@ -43,8 +44,17 @@ import {
   measureDockHeight,
   restoreScrollTop,
 } from './presentation/scrollInset';
+import { shouldInstallComposerPresentation } from './rolloutGate';
 
 export { reflowMobileTextEditorView, findNativeControlsFooter };
+
+/**
+ * Presentation is active only when the server boolean is exact true and the
+ * viewport is mobile. Evaluated at decorate/render time (forum model exists).
+ */
+function isRolloutMobile() {
+  return shouldInstallComposerPresentation(app.forum) && isMobileViewport();
+}
 
 function resolveEditPostComposer() {
   const compat = typeof flarum !== 'undefined' && flarum.core && flarum.core.compat;
@@ -69,6 +79,9 @@ function currentKind(composerComponent) {
 }
 
 function currentMode(composerComponent) {
+  if (!shouldInstallComposerPresentation(app.forum)) {
+    return 'native';
+  }
   return resolvePresentationMode({
     kind: currentKind(composerComponent),
     mobile: isMobileViewport(),
@@ -113,7 +126,7 @@ function getViewportHeightSafe() {
  * EditPostComposer and desktop remain native.
  */
 function isMobilePresentationForEditor(textEditor) {
-  if (!isMobileViewport()) {
+  if (!isRolloutMobile()) {
     return false;
   }
   const composerState = textEditor && textEditor.attrs && textEditor.attrs.composer;
@@ -147,56 +160,120 @@ export function findEditorNode(root) {
 /**
  * Overflow Dropdown children: preserve original VNodes (MarkdownToolbar intact).
  * Control items arrive as already-wrapped <li>; unwrap to content for the menu.
+ * Strip Mithril keys so Dropdown children are uniformly unkeyed (avoids
+ * "Vnodes must either always have keys or never have keys").
  */
+function stripVnodeKey(vnode) {
+  if (!vnode || typeof vnode !== 'object') {
+    return vnode;
+  }
+  if (Array.isArray(vnode)) {
+    return vnode.map(stripVnodeKey);
+  }
+  const attrs = { ...(vnode.attrs || {}) };
+  delete attrs.key;
+  const children = vnode.children;
+  const next = {
+    ...vnode,
+    attrs,
+    children: Array.isArray(children) ? children.map(stripVnodeKey) : stripVnodeKey(children),
+  };
+  // listItems may also stamp vnode.key directly
+  if (Object.prototype.hasOwnProperty.call(next, 'key')) {
+    delete next.key;
+  }
+  return next;
+}
+
 function overflowMenuChild(action) {
   if (!action || !action.vnode) {
     return null;
   }
+  let child;
   if (action.wrapLi) {
-    return action.vnode;
+    child = stripVnodeKey(action.vnode);
+  } else {
+    const children = normalizeChildren(action.vnode.children);
+    child = stripVnodeKey(children.length === 1 ? children[0] : children);
   }
-  const children = normalizeChildren(action.vnode.children);
-  return children.length === 1 ? children[0] : children;
+  // Dropdown runs listItems() on its children; stamp itemName so every menu
+  // entry gets a uniform key (avoids mixed keyed/unkeyed sibling crash).
+  if (child && typeof child === 'object' && !Array.isArray(child)) {
+    child = { ...child, itemName: String(action.key) };
+  }
+  return child;
 }
 
 function visibleStripChild(action) {
   if (!action || !action.vnode) {
     return null;
   }
+  const key = `visible-${action.source}-${action.key}`;
   if (!action.wrapLi) {
-    return action.vnode;
+    // Re-wrap control <li> content so every footer child gets a fresh explicit key.
+    const li = stripVnodeKey(action.vnode);
+    const inner = normalizeChildren(li.children);
+    return (
+      <li key={key} className={classNameOf(li) || `item-${action.key}`}>
+        {inner.length === 1 ? inner[0] : inner}
+      </li>
+    );
   }
-  return <li className={`item-${action.key}`}>{action.vnode}</li>;
+  return (
+    <li key={key} className={`item-${action.key}`}>
+      {stripVnodeKey(action.vnode)}
+    </li>
+  );
 }
 
 /**
  * Mobile footer from VNodes already created by one native TextEditor.view().
  * Does not call controlItems() or toolbarItems() again.
  * Overflow uses Flarum's native Dropdown (mobile bottom-sheet behavior on phone).
+ * Every direct <ul> child must be keyed (ItemList submit/visible lis are keyed).
  */
 function renderMobileControlsFromExtracted(partitioned) {
   const overflowLabel = app.translator.trans('flatrate-composer-ui.forum.toolbar_overflow');
   const { visible, overflow, submitLi } = partitioned;
 
+  const children = [];
+
+  for (const action of visible) {
+    const child = visibleStripChild(action);
+    if (child) children.push(child);
+  }
+
+  if (overflow.length) {
+    children.push(
+      <li key="flatrate-overflow" className="item-flatrateOverflow FlatrateComposer-overflow">
+        <Dropdown
+          className="Dropdown FlatrateComposer-overflowDropdown"
+          buttonClassName="Button Button--icon FlatrateComposer-overflowToggle"
+          menuClassName="Dropdown-menu Dropdown-menu--top FlatrateComposer-overflowMenu"
+          icon="fas fa-ellipsis-h"
+          caretIcon={null}
+          label={overflowLabel}
+          accessibleToggleLabel={overflowLabel}
+        >
+          {overflow.map((action) => overflowMenuChild(action))}
+        </Dropdown>
+      </li>
+    );
+  }
+
+  if (submitLi) {
+    const li = stripVnodeKey(submitLi);
+    const inner = normalizeChildren(li.children);
+    children.push(
+      <li key="submit" className={classNameOf(li) || 'item-submit App-primaryControl'}>
+        {inner.length === 1 ? inner[0] : inner}
+      </li>
+    );
+  }
+
   return (
     <ul className="TextEditor-controls Composer-footer FlatrateComposer-toolbar" role="toolbar">
-      {visible.map((action) => visibleStripChild(action))}
-      {overflow.length ? (
-        <li className="item-flatrateOverflow FlatrateComposer-overflow">
-          <Dropdown
-            className="Dropdown FlatrateComposer-overflowDropdown"
-            buttonClassName="Button Button--icon FlatrateComposer-overflowToggle"
-            menuClassName="Dropdown-menu Dropdown-menu--top FlatrateComposer-overflowMenu"
-            icon="fas fa-ellipsis-h"
-            caretIcon={null}
-            label={overflowLabel}
-            accessibleToggleLabel={overflowLabel}
-          >
-            {overflow.map((action) => overflowMenuChild(action))}
-          </Dropdown>
-        </li>
-      ) : null}
-      {submitLi}
+      {children}
     </ul>
   );
 }
@@ -304,7 +381,7 @@ export default function extendComposer() {
   const originalDiscussionInitAttrs = DiscussionComposer.initAttrs;
   DiscussionComposer.initAttrs = function (attrs) {
     originalDiscussionInitAttrs.call(this, attrs);
-    if (!isMobileViewport()) {
+    if (!isRolloutMobile()) {
       return;
     }
     attrs.placeholder = app.translator.trans('flatrate-composer-ui.forum.discussion_body_placeholder');
@@ -313,7 +390,7 @@ export default function extendComposer() {
 
   // Presentation-only title for the single fullscreen app-bar row (CSS-composed with close + Post).
   extend(DiscussionComposer.prototype, 'headerItems', function (items) {
-    if (!isMobileViewport()) {
+    if (!isRolloutMobile()) {
       return;
     }
     items.add(
@@ -326,7 +403,7 @@ export default function extendComposer() {
   });
 
   extend(ReplyComposer.prototype, 'headerItems', function (items) {
-    if (!isMobileViewport()) {
+    if (!isRolloutMobile()) {
       return;
     }
 

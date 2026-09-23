@@ -70,7 +70,7 @@
     .Composer-flexible,
     textarea.TextEditor-editor {
       min-height: 24px;
-      max-height: var(--fr-composer-reply-max, min(42dvh, 360px)) !important;
+      max-height: ~"var(--fr-composer-reply-max, min(42dvh, 360px))" !important;
       height: auto !important;
       font-size: 16px;
       resize: none;
@@ -122,7 +122,7 @@
   .Composer.Composer--flatrateReplyExpanded {
     .item-flatrateReplyExpand {
       position: absolute;
-      top: calc(env(safe-area-inset-top) + 4px);
+      top: ~"calc(env(safe-area-inset-top) + 4px)";
       right: 52px;
       z-index: 5;
     }

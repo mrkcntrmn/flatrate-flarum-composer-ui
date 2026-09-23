@@ -469,12 +469,16 @@ test('client rollout gate fails closed except exact boolean true', () => {
   assert.equal(isComposerPresentationAttributeEnabled(true), true);
   assert.equal(isComposerPresentationAttributeEnabled('true'), false);
 
+  // Flarum Application.boot runs initializers before app.forum exists, so the
+  // fail-closed gate must be decoration-time (extendComposer), not init-time.
   const indexSrc = readFileSync(join(repoRoot, 'js/src/forum/index.js'), 'utf8');
-  assert.match(indexSrc, /shouldInstallComposerPresentation\(app\.forum\)/);
-  assert.match(indexSrc, /if \(!shouldInstallComposerPresentation/);
   assert.ok(indexSrc.includes('extendComposer()'));
-  // Decorators install only inside the gate — no ungated extendComposer call.
   assert.equal((indexSrc.match(/extendComposer\(\)/g) || []).length, 1);
+  assert.doesNotMatch(indexSrc, /if \(!shouldInstallComposerPresentation/);
+
+  const extendSrc = readFileSync(join(repoRoot, 'js/src/forum/extendComposer.js'), 'utf8');
+  assert.match(extendSrc, /shouldInstallComposerPresentation\(app\.forum\)/);
+  assert.match(extendSrc, /function isRolloutMobile/);
 });
 
 test('discussion inset preserves empty original padding across repeated applies', () => {

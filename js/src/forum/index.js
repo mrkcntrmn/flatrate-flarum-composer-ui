@@ -1,13 +1,10 @@
 import app from 'flarum/forum/app';
 import extendComposer from './extendComposer';
-import { shouldInstallComposerPresentation } from './rolloutGate';
 
 app.initializers.add('flatrate-composer-ui', () => {
-  // Fail closed: only the server-authoritative JSON boolean true installs
-  // decorators. Gated actors retain the untouched native composer — no CSS hide.
-  if (!shouldInstallComposerPresentation(app.forum)) {
-    return;
-  }
-
+  // Always register decorators. Flarum runs initializers before app.forum exists
+  // (Application.boot pushes the payload after initializers), so an init-time
+  // attribute gate can never observe flatrateComposerUiEnabled. Fail-closed
+  // rollout is enforced at decoration time via shouldInstallComposerPresentation.
   extendComposer();
 });

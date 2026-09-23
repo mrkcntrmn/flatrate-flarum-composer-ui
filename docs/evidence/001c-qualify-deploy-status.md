@@ -3,7 +3,7 @@
 ```text
 WORK_ORDER=FORUM-MOBILE-COMPOSER-001C
 STATUS=PARTIAL
-CORRECTION_HEAD=fc054df7871ebd0ed63ad40278083a808aaa0971
+CORRECTION_HEAD=6d842d2878a7f57dcc4f0232e3e911a5ac3fd4f4
 IMPLEMENTATION_BASE=fc8c792aceca023ab221ccb883c4ca421d9b21f4
 PRODUCTION_MUTATION_AUTHORIZED=true
 AUTHORIZED_SCOPE=admin_only_canary
@@ -12,6 +12,10 @@ PUBLIC_CUTOVER_AUTHORIZED=false
 PRODUCTION_MUTATED=false
 PR_MERGED=false
 ```
+
+R1 disposable repair notes: see `docs/evidence/001c-r1-disposable-qualify.md`.
+Phase 1 SHA correction verified. Disposable platform/extensions/payloads/
+editor-identity/rollback progressed; Job Breakdown mirror still open → PARTIAL.
 
 ## Phase 1 — PASS
 

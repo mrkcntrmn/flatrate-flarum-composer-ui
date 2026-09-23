@@ -62,10 +62,10 @@
     .FlatrateComposer-overflowDropdown {
       .Dropdown-menu,
       .FlatrateComposer-overflowMenu {
-        max-width: min(280px, 90vw);
-        max-height: min(50vh, 320px);
+        max-width: ~"min(280px, 90vw)";
+        max-height: ~"min(50vh, 320px)";
         overflow: auto;
-        z-index: calc(~"var(--zindex-composer) + 20");
+        z-index: ~"calc(var(--zindex-composer) + 20)";
       }
 
       // Intact MarkdownToolbar / ButtonGroup inside the overflow menu:

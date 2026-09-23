@@ -21,6 +21,10 @@ export function normalizeChildren(value) {
   if (Array.isArray(value)) {
     return value.reduce((acc, child) => acc.concat(normalizeChildren(child)), []);
   }
+  // Mithril fragment / trusted text nodes — unwrap so ItemList rows stay siblings.
+  if (typeof value === 'object' && (value.tag === '[' || value.tag === '#')) {
+    return normalizeChildren(value.children);
+  }
   return [value];
 }
 
