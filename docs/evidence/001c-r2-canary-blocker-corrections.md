@@ -4,6 +4,7 @@
 WORK_ORDER=FORUM-MOBILE-COMPOSER-001C-R2
 STATUS=PASS
 BASE_SHA=76d5f971409fc69f31491041471301df98848209
+HEAD_SHA=284258e6e384198f7e8edc4ab23842afb944e363
 BRANCH=feat/forum-mobile-composer-001b
 PR=https://github.com/mrkcntrmn/flatrate-flarum-composer-ui/pull/1
 REVIEW=https://github.com/mrkcntrmn/flatrate-flarum-composer-ui/pull/1#pullrequestreview-5297602947
