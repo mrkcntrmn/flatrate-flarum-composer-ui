@@ -1,0 +1,77 @@
+@media @phone {
+  .Composer.Composer--flatrateMobile {
+    .FlatrateComposer-toolbar {
+      list-style: none;
+      margin: 0;
+      padding: 0 var(--fr-composer-edge);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 0 0 auto;
+      height: var(--fr-composer-toolbar-height);
+      min-height: var(--fr-composer-toolbar-height);
+      border-top: 1px solid var(--control-bg);
+      overflow: visible;
+      flex-wrap: nowrap;
+
+      > li {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .Button,
+      .Button--icon {
+        min-width: var(--fr-composer-hit);
+        min-height: var(--fr-composer-hit);
+        width: var(--fr-composer-hit);
+        height: var(--fr-composer-hit);
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+
+    // Kill native horizontal scrollbar on toolbar.
+    .TextEditor-controls,
+    .TextEditor-toolbar,
+    .FlatrateComposer-toolbar {
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
+    }
+
+    .FlatrateComposer-overflow {
+      position: relative;
+    }
+
+    .FlatrateComposer-overflowMenu {
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 6px);
+      z-index: calc(~"var(--zindex-composer) + 5");
+      list-style: none;
+      margin: 0;
+      padding: 6px;
+      min-width: 180px;
+      max-width: min(280px, 90vw);
+      max-height: min(50vh, 320px);
+      overflow: auto;
+      background: var(--body-bg);
+      border: 1px solid var(--control-bg);
+      border-radius: var(--fr-composer-radius);
+      box-shadow: 0 2px 8px var(--shadow-color);
+
+      > li {
+        display: block;
+      }
+
+      .Button {
+        width: 100%;
+        justify-content: flex-start;
+        min-height: var(--fr-composer-hit);
+      }
+    }
+  }
+}
