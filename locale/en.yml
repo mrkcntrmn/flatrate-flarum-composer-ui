@@ -8,3 +8,9 @@ flatrate-composer-ui:
     toolbar_overflow: More formatting
     discussion_title_placeholder: Discussion title
     discussion_body_placeholder: What's going on?
+  admin:
+    settings:
+      member_cutover_label: Enable mobile composer for all users
+      member_cutover_help: >
+        Off keeps the custom composer limited to administrators. Enable only after the admin
+        canary and compatibility checks pass.

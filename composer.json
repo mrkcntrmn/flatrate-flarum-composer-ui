@@ -19,6 +19,23 @@
         "php": "^8.1",
         "flarum/core": "^1.8.5"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "FlatRate\\ComposerUi\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FlatRate\\ComposerUi\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:rollout": "php tests/run-rollout.php"
+    },
     "extra": {
         "flarum-extension": {
             "title": "Composer UI",

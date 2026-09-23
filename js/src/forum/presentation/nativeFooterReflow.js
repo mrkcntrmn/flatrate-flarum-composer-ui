@@ -41,6 +41,13 @@ export function actionKeyFromVnode(vnode) {
   if (!vnode || typeof vnode !== 'object') {
     return null;
   }
+
+  // Flarum 1.8.19 ItemList.toArray() stamps the item key on the content proxy
+  // as vnode.itemName — inspect that before attrs/classes. Do not mutate vnode.
+  if (Object.prototype.hasOwnProperty.call(vnode, 'itemName') && vnode.itemName != null && vnode.itemName !== '') {
+    return String(vnode.itemName);
+  }
+
   const attrs = vnode.attrs || {};
   if (attrs.key != null) {
     return String(attrs.key);

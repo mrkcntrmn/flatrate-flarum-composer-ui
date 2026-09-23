@@ -43,7 +43,12 @@ import {
   partitionExtractedActions,
   reflowMobileTextEditorView,
   countSubmitVnodes,
+  actionKeyFromVnode,
 } from '../src/forum/presentation/nativeFooterReflow.js';
+import {
+  shouldInstallComposerPresentation,
+  isComposerPresentationAttributeEnabled,
+} from '../src/forum/rolloutGate.js';
 import {
   applyDiscussionInset,
   clearDiscussionInset,
@@ -75,7 +80,8 @@ function mockEl(initialPadding = '') {
 
 /**
  * Production-shaped native TextEditor footer VNode after one ItemList evaluation.
- * Markdown is a single toolbar child containing eleven nested formatting buttons.
+ * Flarum 1.8.19 ItemList.toArray() stamps `itemName` on the content proxy itself —
+ * not attrs.key / attrs.itemName / .item-* classes for toolbar contributions.
  */
 function buildNativeTextEditorVnode(hooks) {
   const controlItems = hooks.controlItems();
@@ -83,24 +89,58 @@ function buildNativeTextEditorVnode(hooks) {
 
   const toolbarChildren = Object.keys(toolbarItems.items)
     .sort((a, b) => (toolbarItems.items[b].priority || 0) - (toolbarItems.items[a].priority || 0))
-    .map((key) => ({
-      tag: toolbarItems.items[key].tag || 'div',
-      attrs: { key, className: toolbarItems.items[key].className || `ToolbarItem-${key}` },
-      children: toolbarItems.items[key].children || [toolbarItems.items[key].content],
-    }));
+    .map((key) => {
+      const entry = toolbarItems.items[key];
+      let vnode;
+      if (entry.children) {
+        vnode = {
+          tag: entry.tag || 'div',
+          attrs: entry.attrs ? { ...entry.attrs } : {},
+          children: entry.children,
+        };
+      } else if (entry.content && typeof entry.content === 'object' && entry.content.tag) {
+        // Content proxy is the VNode itself (Mentions / Emoji buttons).
+        vnode = entry.content;
+      } else {
+        vnode = {
+          tag: entry.tag || 'div',
+          attrs: entry.attrs ? { ...entry.attrs } : {},
+          children: [entry.content],
+        };
+      }
+      // Stamp like ItemList.toArray() — own property on the proxy, not attrs.
+      Object.defineProperty(vnode, 'itemName', {
+        value: key,
+        enumerable: true,
+        configurable: true,
+        writable: false,
+      });
+      return vnode;
+    });
 
   const controlChildren = Object.keys(controlItems.items)
     .sort((a, b) => (controlItems.items[b].priority || 0) - (controlItems.items[a].priority || 0))
-    .map((key) => ({
-      tag: 'li',
-      attrs: {
-        className:
-          key === 'submit'
-            ? `item-${key} App-primaryControl`
-            : `item-${key}`,
-      },
-      children: [controlItems.items[key].content],
-    }));
+    .map((key) => {
+      const content = controlItems.items[key].content;
+      if (content && typeof content === 'object') {
+        Object.defineProperty(content, 'itemName', {
+          value: key,
+          enumerable: true,
+          configurable: true,
+          writable: false,
+        });
+      }
+      return {
+        tag: 'li',
+        attrs: {
+          className:
+            key === 'submit'
+              ? `item-${key} App-primaryControl`
+              : `item-${key}`,
+        },
+        children: [content],
+      };
+    });
 
   return {
     tag: 'div',
@@ -156,15 +196,28 @@ function productionHooks() {
       toolbarCalls += 1;
       return {
         items: {
+          // No attrs.key / attrs.itemName / item-* class — only vnode.itemName after toArray.
           markdown: {
             content: 'MarkdownToolbar',
-            className: 'MarkdownToolbar',
+            attrs: { className: 'MarkdownToolbar' },
             children: markdownButtons,
             priority: 100,
           },
-          mention: { content: { tag: 'button', attrs: { className: 'Button' }, children: ['@'] }, priority: 50 },
-          emoji: { content: { tag: 'button', attrs: { className: 'Button' }, children: [':)'] }, priority: 40 },
-          'mystery-ext': { content: { tag: 'button', attrs: { className: 'Button' }, children: ['?'] }, priority: 0 },
+          mention: {
+            content: { tag: 'button', attrs: { className: 'Button' }, children: ['@'] },
+            attrs: {},
+            priority: 50,
+          },
+          emoji: {
+            content: { tag: 'button', attrs: { className: 'Button' }, children: [':)'] },
+            attrs: {},
+            priority: 40,
+          },
+          'mystery-ext': {
+            content: { tag: 'button', attrs: { className: 'Button' }, children: ['?'] },
+            attrs: {},
+            priority: 0,
+          },
         },
       };
     },
@@ -338,6 +391,18 @@ test('instrumented controlItems/toolbarItems each run once per mobile render', (
   assert.equal(hooks.controlCalls(), 1, 'native view evaluates controlItems once');
   assert.equal(hooks.toolbarCalls(), 1, 'native view evaluates toolbarItems once');
 
+  const toolbarChildren = nativeVnode.children[1].children[0].children;
+  const originalMarkdown = toolbarChildren.find((v) => v.itemName === 'markdown');
+  const originalMention = toolbarChildren.find((v) => v.itemName === 'mention');
+  const originalEmoji = toolbarChildren.find((v) => v.itemName === 'emoji');
+
+  assert.equal(actionKeyFromVnode(originalMarkdown), 'markdown');
+  assert.equal(actionKeyFromVnode(originalMention), 'mention');
+  assert.equal(actionKeyFromVnode(originalEmoji), 'emoji');
+  assert.equal(originalMarkdown.attrs.key, undefined);
+  assert.equal(originalMention.attrs.itemName, undefined);
+  assert.ok(!String(originalMarkdown.attrs.className || '').includes('item-markdown'));
+
   const reflowed = reflowMobileTextEditorView(nativeVnode, { maxVisible: MAX_VISIBLE_ACTIONS });
   assert.ok(reflowed);
   assert.equal(hooks.controlCalls(), 1, 'reflow must not re-call controlItems');
@@ -359,8 +424,13 @@ test('instrumented controlItems/toolbarItems each run once per mobile render', (
   assert.equal(reflowed.submitCount, 1);
 
   const markdownAction = reflowed.partitioned.overflow.find((a) => a.key === 'markdown');
+  const mentionAction = reflowed.partitioned.visible.find((a) => a.key === 'mention');
+  const emojiAction = reflowed.partitioned.visible.find((a) => a.key === 'emoji');
   assert.ok(markdownAction);
   assert.equal(normalizeChildrenCount(markdownAction.vnode), 11, 'MarkdownToolbar stays intact with 11 buttons');
+  assert.equal(markdownAction.vnode, originalMarkdown, 'markdown VNode identity preserved');
+  assert.equal(mentionAction.vnode, originalMention, 'mention VNode identity preserved');
+  assert.equal(emojiAction.vnode, originalEmoji, 'emoji VNode identity preserved');
 });
 
 test('native footer extract preserves submit once and keeps markdown overflow', () => {
@@ -376,6 +446,35 @@ test('native footer extract preserves submit once and keeps markdown overflow', 
   assert.ok(!partitioned.visible.some((a) => a.key === 'markdown'));
   assert.ok(partitioned.overflow.some((a) => a.key === 'markdown'));
   assert.equal(partitioned.visible.length, 4);
+});
+
+test('client rollout gate fails closed except exact boolean true', () => {
+  const forum = (value) => ({
+    attribute(name) {
+      assert.equal(name, 'flatrateComposerUiEnabled');
+      return value;
+    },
+  });
+
+  assert.equal(shouldInstallComposerPresentation(forum(true)), true);
+  assert.equal(shouldInstallComposerPresentation(forum(false)), false);
+  assert.equal(shouldInstallComposerPresentation(forum(undefined)), false);
+  assert.equal(shouldInstallComposerPresentation(forum(null)), false);
+  assert.equal(shouldInstallComposerPresentation(forum('true')), false);
+  assert.equal(shouldInstallComposerPresentation(forum('1')), false);
+  assert.equal(shouldInstallComposerPresentation(forum(1)), false);
+  assert.equal(shouldInstallComposerPresentation(null), false);
+  assert.equal(shouldInstallComposerPresentation({}), false);
+
+  assert.equal(isComposerPresentationAttributeEnabled(true), true);
+  assert.equal(isComposerPresentationAttributeEnabled('true'), false);
+
+  const indexSrc = readFileSync(join(repoRoot, 'js/src/forum/index.js'), 'utf8');
+  assert.match(indexSrc, /shouldInstallComposerPresentation\(app\.forum\)/);
+  assert.match(indexSrc, /if \(!shouldInstallComposerPresentation/);
+  assert.ok(indexSrc.includes('extendComposer()'));
+  // Decorators install only inside the gate — no ungated extendComposer call.
+  assert.equal((indexSrc.match(/extendComposer\(\)/g) || []).length, 1);
 });
 
 test('discussion inset preserves empty original padding across repeated applies', () => {
