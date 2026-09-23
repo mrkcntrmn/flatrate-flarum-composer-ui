@@ -78,6 +78,15 @@ class MemberCutoverTest extends TestCase
         $adminJs = (string) file_get_contents($root . '/js/src/admin/index.js');
         $forumIndex = (string) file_get_contents($root . '/js/src/forum/index.js');
 
+        $derivedId = \FlatRate\ComposerUi\ExtensionId::fromComposerJsonFile($root . '/composer.json');
+        $this->assertSame(\FlatRate\ComposerUi\ExtensionId::EXPECTED_ID, $derivedId);
+        $this->assertSame(
+            \FlatRate\ComposerUi\ExtensionId::fromComposerName(\FlatRate\ComposerUi\ExtensionId::COMPOSER_NAME),
+            $derivedId
+        );
+        $this->assertStringContainsString("for('{$derivedId}')", $adminJs);
+        $this->assertStringNotContainsString("for('flatrate-flarum-composer-ui')", $adminJs);
+
         $this->assertStringContainsString('FlatrateComposerUiEnabledAttribute::class', $extend);
         $this->assertStringContainsString("->default(MemberCutover::SETTING_KEY, '0')", $extend);
         $this->assertStringContainsString("->js(__DIR__.'/js/dist/admin.js')", $extend);
@@ -85,7 +94,6 @@ class MemberCutoverTest extends TestCase
         $this->assertStringContainsString('getActor()->isAdmin()', $attribute);
         $this->assertStringNotContainsString('can(', $attribute);
         $this->assertStringContainsString("setting: 'flatrate-composer-ui.member_cutover'", $adminJs);
-        $this->assertStringContainsString("for('flatrate-flarum-composer-ui')", $adminJs);
         $this->assertStringContainsString('shouldInstallComposerPresentation(app.forum)', $forumIndex);
         $this->assertStringContainsString('extendComposer()', $forumIndex);
     }

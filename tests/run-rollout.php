@@ -74,10 +74,20 @@ expect_true(MemberCutover::parse(1), 'parse int 1');
 
 expect_same('flatrate-composer-ui.member_cutover', MemberCutover::SETTING_KEY, 'setting key');
 
+require $root . '/src/ExtensionId.php';
+
+$derivedId = \FlatRate\ComposerUi\ExtensionId::fromComposerJsonFile($root . '/composer.json');
+expect_same(\FlatRate\ComposerUi\ExtensionId::EXPECTED_ID, $derivedId, 'derived extension id');
+expect_same(
+    \FlatRate\ComposerUi\ExtensionId::fromComposerName(\FlatRate\ComposerUi\ExtensionId::COMPOSER_NAME),
+    $derivedId,
+    'composer name maps to expected id'
+);
 $extend = (string) file_get_contents($root . '/extend.php');
 $attribute = (string) file_get_contents($root . '/src/Api/FlatrateComposerUiEnabledAttribute.php');
 $adminJs = (string) file_get_contents($root . '/js/src/admin/index.js');
 $forumIndex = (string) file_get_contents($root . '/js/src/forum/index.js');
+$adminDist = (string) file_get_contents($root . '/js/dist/admin.js');
 
 expect_true(str_contains($extend, 'FlatrateComposerUiEnabledAttribute::class'), 'extend registers attribute');
 expect_true(str_contains($extend, "->default(MemberCutover::SETTING_KEY, '0')"), 'extend default off');
@@ -86,7 +96,10 @@ expect_true(str_contains($attribute, "'flatrateComposerUiEnabled' => \$enabled")
 expect_true(str_contains($attribute, 'getActor()->isAdmin()'), 'uses isAdmin');
 expect_false(str_contains($attribute, 'can('), 'attribute avoids can()');
 expect_true(str_contains($adminJs, "setting: 'flatrate-composer-ui.member_cutover'"), 'admin setting key');
-expect_true(str_contains($adminJs, "for('flatrate-flarum-composer-ui')"), 'admin extension id');
+expect_true(str_contains($adminJs, "for('{$derivedId}')"), 'admin extension id source');
+expect_false(str_contains($adminJs, "for('flatrate-flarum-composer-ui')"), 'admin source rejects wrong id');
+expect_true(str_contains($adminDist, "for(\"{$derivedId}\")") || str_contains($adminDist, "for('{$derivedId}')") || str_contains($adminDist, "for(\"flatrate-composer-ui\")"), 'admin bundle extension id');
+expect_false(str_contains($adminDist, 'flatrate-flarum-composer-ui'), 'admin bundle rejects wrong id');
 expect_true(str_contains($forumIndex, 'shouldInstallComposerPresentation(app.forum)'), 'forum gate');
 expect_true(str_contains($forumIndex, 'extendComposer()'), 'forum installs when gated');
 

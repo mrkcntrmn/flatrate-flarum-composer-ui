@@ -18,8 +18,9 @@ DONE_PROVEN=false
 | Member | native | custom (presentation only) |
 | Guest | native | presentation flag may be true; native permissions still gate opening a composer |
 
-Setting key: `flatrate-composer-ui.member_cutover`  
+Setting key: `flatrate-composer-ui.member_cutover`
 Forum attribute: `flatrateComposerUiEnabled` (JSON boolean, actor-resolved)
+Admin extension ID: `flatrate-composer-ui` (derived from `flatrate/flarum-composer-ui`)
 
 ## Fail-closed parsing
 
