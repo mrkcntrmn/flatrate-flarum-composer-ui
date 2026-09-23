@@ -1,0 +1,10 @@
+flatrate-composer-ui:
+  forum:
+    start_discussion: Start Discussion
+    expand_reply: Expand reply
+    collapse_reply: Collapse reply
+    reply_context: "Replying to {username}"
+    remove_reply_context: Remove reply target
+    toolbar_overflow: More formatting
+    discussion_title_placeholder: Discussion title
+    discussion_body_placeholder: What's going on?

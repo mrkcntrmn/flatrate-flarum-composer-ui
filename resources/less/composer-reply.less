@@ -1,0 +1,127 @@
+@media @phone {
+  .Composer.Composer--flatrateReplyDocked {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: var(--fr-composer-radius, 6px) var(--fr-composer-radius, 6px) 0 0;
+    background: var(--body-bg);
+    box-shadow: 0 -2px 8px var(--shadow-color);
+    z-index: var(--zindex-composer);
+
+    &:before {
+      display: none;
+    }
+
+    .Composer-handle {
+      display: none;
+    }
+
+    .Composer-content {
+      padding: 8px 12px 0;
+    }
+
+    .ComposerBody-avatar {
+      display: none;
+    }
+
+    .ComposerBody-header {
+      margin: 0 0 4px;
+
+      > li {
+        display: flex;
+        align-items: center;
+        border: 0;
+        padding: 4px 0;
+        min-height: 0;
+      }
+
+      // Keep discussion title compact; expand control stays reachable.
+      > li.item-title {
+        font-size: 13px;
+        opacity: 0.85;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    .FlatrateComposer-topBar {
+      // Submit stays in the docked footer toolbar for quick reply.
+      display: none;
+    }
+
+    .FlatrateComposer-toolbar {
+      .item-submit {
+        display: flex;
+        margin-left: auto;
+      }
+    }
+
+    .Composer-flexible,
+    textarea.TextEditor-editor {
+      min-height: 24px;
+      max-height: var(--fr-composer-reply-max, min(42dvh, 360px)) !important;
+      height: auto !important;
+      font-size: 16px;
+      resize: none;
+    }
+
+    .Composer-controls {
+      top: 4px;
+      right: 4px;
+      left: auto;
+
+      > li {
+        display: inline-flex !important;
+      }
+
+      .Button {
+        min-width: 44px;
+        min-height: 44px;
+      }
+    }
+  }
+
+  .FlatrateComposer-replyContext {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 40px;
+    max-height: 48px;
+    padding: 0 4px;
+    border-radius: 6px;
+    background: var(--control-bg);
+  }
+
+  .FlatrateComposer-replyContextLabel {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+
+  .FlatrateComposer-expand {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .Composer.Composer--flatrateReplyExpanded {
+    .FlatrateComposer-topBar {
+      display: flex;
+    }
+
+    .item-flatrateReplyExpand {
+      position: absolute;
+      top: calc(env(safe-area-inset-top) + 4px);
+      right: 52px;
+      z-index: 3;
+    }
+  }
+}
