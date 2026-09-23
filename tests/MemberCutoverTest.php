@@ -94,8 +94,12 @@ class MemberCutoverTest extends TestCase
         $this->assertStringContainsString('getActor()->isAdmin()', $attribute);
         $this->assertStringNotContainsString('can(', $attribute);
         $this->assertStringContainsString("setting: 'flatrate-composer-ui.member_cutover'", $adminJs);
-        $this->assertStringContainsString('shouldInstallComposerPresentation(app.forum)', $forumIndex);
+        // Initials run before app.forum exists — gate at decorate/lifecycle time.
         $this->assertStringContainsString('extendComposer()', $forumIndex);
+        $this->assertStringNotContainsString('shouldInstallComposerPresentation(app.forum)', $forumIndex);
+        $forumExtend = (string) file_get_contents($root . '/js/src/forum/extendComposer.js');
+        $this->assertStringContainsString('shouldInstallComposerPresentation(app.forum)', $forumExtend);
+        $this->assertStringContainsString("extend(Composer.prototype, 'oncreate'", $forumExtend);
     }
 
     public function testPresentationGateDoesNotMentionPermissionApis(): void

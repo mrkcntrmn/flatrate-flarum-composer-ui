@@ -87,6 +87,7 @@ $extend = (string) file_get_contents($root . '/extend.php');
 $attribute = (string) file_get_contents($root . '/src/Api/FlatrateComposerUiEnabledAttribute.php');
 $adminJs = (string) file_get_contents($root . '/js/src/admin/index.js');
 $forumIndex = (string) file_get_contents($root . '/js/src/forum/index.js');
+$forumExtend = (string) file_get_contents($root . '/js/src/forum/extendComposer.js');
 $adminDist = (string) file_get_contents($root . '/js/dist/admin.js');
 
 expect_true(str_contains($extend, 'FlatrateComposerUiEnabledAttribute::class'), 'extend registers attribute');
@@ -100,8 +101,11 @@ expect_true(str_contains($adminJs, "for('{$derivedId}')"), 'admin extension id s
 expect_false(str_contains($adminJs, "for('flatrate-flarum-composer-ui')"), 'admin source rejects wrong id');
 expect_true(str_contains($adminDist, "for(\"{$derivedId}\")") || str_contains($adminDist, "for('{$derivedId}')") || str_contains($adminDist, "for(\"flatrate-composer-ui\")"), 'admin bundle extension id');
 expect_false(str_contains($adminDist, 'flatrate-flarum-composer-ui'), 'admin bundle rejects wrong id');
-expect_true(str_contains($forumIndex, 'shouldInstallComposerPresentation(app.forum)'), 'forum gate');
-expect_true(str_contains($forumIndex, 'extendComposer()'), 'forum installs when gated');
+// Flarum boots initializers before app.forum exists — gate at decorate/lifecycle time.
+expect_true(str_contains($forumIndex, 'extendComposer()'), 'forum always registers decorators');
+expect_false(str_contains($forumIndex, 'shouldInstallComposerPresentation(app.forum)'), 'forum index has no init-time gate');
+expect_true(str_contains($forumExtend, 'shouldInstallComposerPresentation(app.forum)'), 'forum decorate-time gate');
+expect_true(str_contains($forumExtend, "extend(Composer.prototype, 'oncreate'"), 'composer oncreate gated');
 
 $src = (string) file_get_contents($root . '/src/MemberCutover.php');
 expect_false(str_contains($src, '->can('), 'helper avoids can()');

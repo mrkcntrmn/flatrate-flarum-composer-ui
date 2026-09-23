@@ -46,10 +46,11 @@ export function actionKeyFromVnode(vnode) {
     return null;
   }
 
-  // Flarum 1.8.19 ItemList.toArray() stamps the item key on the content proxy
-  // as vnode.itemName — inspect that before attrs/classes. Do not mutate vnode.
-  if (Object.prototype.hasOwnProperty.call(vnode, 'itemName') && vnode.itemName != null && vnode.itemName !== '') {
-    return String(vnode.itemName);
+  // Flarum 1.x ItemList.toArray() exposes itemName via a Proxy get trap —
+  // not as an own property. Read it directly; do not use hasOwnProperty.
+  const itemName = vnode.itemName;
+  if (itemName != null && itemName !== '') {
+    return String(itemName);
   }
 
   const attrs = vnode.attrs || {};

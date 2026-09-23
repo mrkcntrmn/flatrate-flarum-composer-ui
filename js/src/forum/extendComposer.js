@@ -36,7 +36,6 @@ import {
   normalizeChildren,
   findNativeControlsFooter,
   reflowMobileTextEditorView,
-  classNameOf,
 } from './presentation/nativeFooterReflow';
 import {
   applyDiscussionInset,
@@ -91,6 +90,22 @@ function currentMode(composerComponent) {
 
 function contentElement() {
   return document.getElementById('content') || document.querySelector('.App-content');
+}
+
+/**
+ * Disposable/debug beacon for lifecycle side-effect proofs. Not a UI control.
+ * Cutover-off actors must never set these attributes.
+ */
+function setLifecycleBeacon(kind, enabled) {
+  if (typeof document === 'undefined' || !document.documentElement) {
+    return;
+  }
+  const attr = `data-flatrate-lifecycle-${kind}`;
+  if (enabled) {
+    document.documentElement.setAttribute(attr, '1');
+  } else {
+    document.documentElement.removeAttribute(attr);
+  }
 }
 
 function syncDiscussionInset(composerComponent) {
@@ -158,70 +173,67 @@ export function findEditorNode(root) {
 }
 
 /**
- * Overflow Dropdown children: preserve original VNodes (MarkdownToolbar intact).
- * Control items arrive as already-wrapped <li>; unwrap to content for the menu.
- * Strip Mithril keys so Dropdown children are uniformly unkeyed (avoids
- * "Vnodes must either always have keys or never have keys").
+ * Stamp itemName for Dropdown.listItems without cloning descendant trees.
+ * Flarum ItemList uses a Proxy get trap; mirror that shape for unwrapped controls.
  */
-function stripVnodeKey(vnode) {
-  if (!vnode || typeof vnode !== 'object') {
+function withItemNameProxy(vnode, name) {
+  if (!vnode || typeof vnode !== 'object' || Array.isArray(vnode)) {
     return vnode;
   }
-  if (Array.isArray(vnode)) {
-    return vnode.map(stripVnodeKey);
+  if (vnode.itemName != null && String(vnode.itemName) === String(name)) {
+    return vnode;
   }
-  const attrs = { ...(vnode.attrs || {}) };
-  delete attrs.key;
-  const children = vnode.children;
-  const next = {
-    ...vnode,
-    attrs,
-    children: Array.isArray(children) ? children.map(stripVnodeKey) : stripVnodeKey(children),
-  };
-  // listItems may also stamp vnode.key directly
-  if (Object.prototype.hasOwnProperty.call(next, 'key')) {
-    delete next.key;
-  }
-  return next;
+  return new Proxy(vnode, {
+    get(target, prop, receiver) {
+      if (prop === 'itemName') {
+        return name;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    has(target, prop) {
+      if (prop === 'itemName') {
+        return true;
+      }
+      return Reflect.has(target, prop);
+    },
+  });
 }
 
+/**
+ * Overflow Dropdown children: preserve original VNode identity and nested keys.
+ * Control items arrive as already-wrapped <li>; unwrap to content for the menu.
+ * Do not recursively clone or strip keys from extension-owned descendants.
+ */
 function overflowMenuChild(action) {
   if (!action || !action.vnode) {
     return null;
   }
-  let child;
   if (action.wrapLi) {
-    child = stripVnodeKey(action.vnode);
-  } else {
-    const children = normalizeChildren(action.vnode.children);
-    child = stripVnodeKey(children.length === 1 ? children[0] : children);
+    // Toolbar contributions already carry Proxy itemName from ItemList.toArray().
+    return action.vnode;
   }
-  // Dropdown runs listItems() on its children; stamp itemName so every menu
-  // entry gets a uniform key (avoids mixed keyed/unkeyed sibling crash).
-  if (child && typeof child === 'object' && !Array.isArray(child)) {
-    child = { ...child, itemName: String(action.key) };
+  const children = normalizeChildren(action.vnode.children);
+  const child = children.length === 1 ? children[0] : children;
+  if (!child || Array.isArray(child)) {
+    return child;
   }
-  return child;
+  return withItemNameProxy(child, String(action.key));
 }
 
+/**
+ * Visible strip: reuse original control <li> VNodes; wrap toolbar items in a
+ * keyed sibling <li> without touching nested extension trees.
+ */
 function visibleStripChild(action) {
   if (!action || !action.vnode) {
     return null;
   }
-  const key = `visible-${action.source}-${action.key}`;
   if (!action.wrapLi) {
-    // Re-wrap control <li> content so every footer child gets a fresh explicit key.
-    const li = stripVnodeKey(action.vnode);
-    const inner = normalizeChildren(li.children);
-    return (
-      <li key={key} className={classNameOf(li) || `item-${action.key}`}>
-        {inner.length === 1 ? inner[0] : inner}
-      </li>
-    );
+    return action.vnode;
   }
   return (
-    <li key={key} className={`item-${action.key}`}>
-      {stripVnodeKey(action.vnode)}
+    <li key={`visible-${action.source}-${action.key}`} className={`item-${action.key}`}>
+      {action.vnode}
     </li>
   );
 }
@@ -230,7 +242,7 @@ function visibleStripChild(action) {
  * Mobile footer from VNodes already created by one native TextEditor.view().
  * Does not call controlItems() or toolbarItems() again.
  * Overflow uses Flarum's native Dropdown (mobile bottom-sheet behavior on phone).
- * Every direct <ul> child must be keyed (ItemList submit/visible lis are keyed).
+ * Direct <ul> children use a consistent key strategy; nested trees stay intact.
  */
 function renderMobileControlsFromExtracted(partitioned) {
   const overflowLabel = app.translator.trans('flatrate-composer-ui.forum.toolbar_overflow');
@@ -262,13 +274,8 @@ function renderMobileControlsFromExtracted(partitioned) {
   }
 
   if (submitLi) {
-    const li = stripVnodeKey(submitLi);
-    const inner = normalizeChildren(li.children);
-    children.push(
-      <li key="submit" className={classNameOf(li) || 'item-submit App-primaryControl'}>
-        {inner.length === 1 ? inner[0] : inner}
-      </li>
-    );
+    // Original listItems <li> — keep reference identity and nested keys.
+    children.push(submitLi);
   }
 
   return (
@@ -335,6 +342,9 @@ export default function extendComposer() {
   });
 
   extend(Composer.prototype, 'oncreate', function () {
+    if (!shouldInstallComposerPresentation(app.forum)) {
+      return;
+    }
     this._flatrateOnResize = () => {
       if (typeof this.updateHeight === 'function') {
         this.updateHeight();
@@ -342,6 +352,7 @@ export default function extendComposer() {
       m.redraw();
     };
     window.addEventListener('resize', this._flatrateOnResize);
+    setLifecycleBeacon('resize', true);
   });
 
   extend(Composer.prototype, 'onremove', function () {
@@ -349,11 +360,18 @@ export default function extendComposer() {
       window.removeEventListener('resize', this._flatrateOnResize);
       this._flatrateOnResize = null;
     }
+    setLifecycleBeacon('resize', false);
+    if (!shouldInstallComposerPresentation(app.forum)) {
+      return;
+    }
     clearDiscussionInset(contentElement());
     resetReplyPresentation();
   });
 
   extend(Composer.prototype, 'onupdate', function () {
+    if (!shouldInstallComposerPresentation(app.forum)) {
+      return;
+    }
     const kind = currentKind(this);
     if (kind !== 'reply') {
       if (getReplyExpanded() || getReplyFocused()) {
@@ -488,21 +506,31 @@ export default function extendComposer() {
   });
 
   extend(ReplyComposer.prototype, 'oncreate', function () {
+    if (!shouldInstallComposerPresentation(app.forum)) {
+      return;
+    }
     const root = this.$()[0];
     if (!root) {
       return;
     }
     this._flatrateFocusIn = () => {
       setReplyFocused(true);
+      setLifecycleBeacon('focus', true);
       m.redraw();
     };
     root.addEventListener('focusin', this._flatrateFocusIn);
+    setLifecycleBeacon('focus', true);
   });
 
   extend(ReplyComposer.prototype, 'onremove', function () {
     const root = this.$()[0];
     if (root && this._flatrateFocusIn) {
       root.removeEventListener('focusin', this._flatrateFocusIn);
+      this._flatrateFocusIn = null;
+    }
+    setLifecycleBeacon('focus', false);
+    if (!shouldInstallComposerPresentation(app.forum)) {
+      return;
     }
     resetReplyPresentation();
     clearDiscussionInset(contentElement());

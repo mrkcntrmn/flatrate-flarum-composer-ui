@@ -44,6 +44,7 @@ import {
   reflowMobileTextEditorView,
   countSubmitVnodes,
   actionKeyFromVnode,
+  normalizeChildren,
 } from '../src/forum/presentation/nativeFooterReflow.js';
 import {
   shouldInstallComposerPresentation,
@@ -80,9 +81,35 @@ function mockEl(initialPadding = '') {
 
 /**
  * Production-shaped native TextEditor footer VNode after one ItemList evaluation.
- * Flarum 1.8.19 ItemList.toArray() stamps `itemName` on the content proxy itself —
- * not attrs.key / attrs.itemName / .item-* classes for toolbar contributions.
+ * Flarum 1.x ItemList.toArray() exposes `itemName` through a Proxy get trap —
+ * not as an own property (hasOwnProperty('itemName') === false).
  */
+function stampItemListProxy(vnode, key) {
+  return new Proxy(vnode, {
+    get(target, prop, receiver) {
+      if (prop === 'itemName') {
+        return key;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    has(target, prop) {
+      if (prop === 'itemName') {
+        return true;
+      }
+      return Reflect.has(target, prop);
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      if (prop === 'itemName') {
+        return undefined;
+      }
+      return Reflect.getOwnPropertyDescriptor(target, prop);
+    },
+    ownKeys(target) {
+      return Reflect.ownKeys(target);
+    },
+  });
+}
+
 function buildNativeTextEditorVnode(hooks) {
   const controlItems = hooks.controlItems();
   const toolbarItems = hooks.toolbarItems();
@@ -108,28 +135,14 @@ function buildNativeTextEditorVnode(hooks) {
           children: [entry.content],
         };
       }
-      // Stamp like ItemList.toArray() — own property on the proxy, not attrs.
-      Object.defineProperty(vnode, 'itemName', {
-        value: key,
-        enumerable: true,
-        configurable: true,
-        writable: false,
-      });
-      return vnode;
+      return stampItemListProxy(vnode, key);
     });
 
   const controlChildren = Object.keys(controlItems.items)
     .sort((a, b) => (controlItems.items[b].priority || 0) - (controlItems.items[a].priority || 0))
     .map((key) => {
       const content = controlItems.items[key].content;
-      if (content && typeof content === 'object') {
-        Object.defineProperty(content, 'itemName', {
-          value: key,
-          enumerable: true,
-          configurable: true,
-          writable: false,
-        });
-      }
+      const stamped = content && typeof content === 'object' ? stampItemListProxy(content, key) : content;
       return {
         tag: 'li',
         attrs: {
@@ -137,8 +150,9 @@ function buildNativeTextEditorVnode(hooks) {
             key === 'submit'
               ? `item-${key} App-primaryControl`
               : `item-${key}`,
+          key,
         },
-        children: [content],
+        children: [stamped],
       };
     });
 
@@ -174,7 +188,7 @@ function productionHooks() {
   // Eleven nested Markdown buttons — must travel as one intact toolbar VNode.
   const markdownButtons = Array.from({ length: 11 }, (_, i) => ({
     tag: 'button',
-    attrs: { className: 'Button Button--icon', type: 'button', 'data-md': i },
+    attrs: { className: 'Button Button--icon', type: 'button', 'data-md': i, key: `md-${i}` },
     children: [],
   }));
 
@@ -399,9 +413,15 @@ test('instrumented controlItems/toolbarItems each run once per mobile render', (
   assert.equal(actionKeyFromVnode(originalMarkdown), 'markdown');
   assert.equal(actionKeyFromVnode(originalMention), 'mention');
   assert.equal(actionKeyFromVnode(originalEmoji), 'emoji');
+  assert.equal(Object.prototype.hasOwnProperty.call(originalMarkdown, 'itemName'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(originalMention, 'itemName'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(originalEmoji, 'itemName'), false);
   assert.equal(originalMarkdown.attrs.key, undefined);
   assert.equal(originalMention.attrs.itemName, undefined);
   assert.ok(!String(originalMarkdown.attrs.className || '').includes('item-markdown'));
+  assert.equal(classifyActionKey(actionKeyFromVnode(originalMention)), 'mention');
+  assert.equal(classifyActionKey(actionKeyFromVnode(originalEmoji)), 'emoji');
+  assert.equal(classifyActionKey(actionKeyFromVnode(originalMarkdown)), 'markdown');
 
   const reflowed = reflowMobileTextEditorView(nativeVnode, { maxVisible: MAX_VISIBLE_ACTIONS });
   assert.ok(reflowed);
@@ -431,6 +451,47 @@ test('instrumented controlItems/toolbarItems each run once per mobile render', (
   assert.equal(markdownAction.vnode, originalMarkdown, 'markdown VNode identity preserved');
   assert.equal(mentionAction.vnode, originalMention, 'mention VNode identity preserved');
   assert.equal(emojiAction.vnode, originalEmoji, 'emoji VNode identity preserved');
+
+  assert.ok(
+    !reflowed.partitioned.visible.some((a) => String(a.key).startsWith('unknown-')),
+    'no known visible control classified as unknown-*'
+  );
+  assert.ok(
+    !reflowed.partitioned.overflow
+      .filter((a) => ['markdown', 'mention', 'emoji', 'preview', 'mystery-ext'].includes(a.key))
+      .some((a) => String(a.key).startsWith('unknown-')),
+    'named toolbar keys are not unknown-*'
+  );
+
+  // Nested Markdown button keys and references survive reflow (no recursive clone).
+  const mdButtonsBefore = normalizeChildren(originalMarkdown.children);
+  const mdButtonsAfter = normalizeChildren(markdownAction.vnode.children);
+  assert.equal(mdButtonsAfter.length, 11);
+  for (let i = 0; i < 11; i += 1) {
+    assert.equal(mdButtonsAfter[i], mdButtonsBefore[i], `markdown button ${i} reference preserved`);
+    assert.equal(mdButtonsAfter[i].attrs.key, `md-${i}`, `markdown button ${i} key preserved`);
+  }
+
+  const uploadAction = reflowed.partitioned.visible.find((a) => a.key === 'fof-upload');
+  assert.ok(uploadAction);
+  assert.equal(uploadAction.vnode, nativeVnode.children[1].children.find((c) => (c.attrs?.className || '').includes('item-fof-upload')));
+});
+
+test('ItemList Proxy itemName is readable without own property', () => {
+  const target = { tag: 'button', attrs: {}, children: [] };
+  const proxied = stampItemListProxy(target, 'mention');
+  assert.equal(proxied.itemName, 'mention');
+  assert.equal(Object.prototype.hasOwnProperty.call(proxied, 'itemName'), false);
+  assert.equal(actionKeyFromVnode(proxied), 'mention');
+  assert.equal(classifyActionKey(actionKeyFromVnode(proxied)), 'mention');
+
+  const emoji = stampItemListProxy({ tag: 'button', attrs: {}, children: [] }, 'emoji');
+  assert.equal(actionKeyFromVnode(emoji), 'emoji');
+  assert.equal(classifyActionKey('emoji'), 'emoji');
+
+  const markdown = stampItemListProxy({ tag: 'div', attrs: { className: 'MarkdownToolbar' }, children: [] }, 'markdown');
+  assert.equal(actionKeyFromVnode(markdown), 'markdown');
+  assert.equal(classifyActionKey('markdown'), 'markdown');
 });
 
 test('native footer extract preserves submit once and keeps markdown overflow', () => {
@@ -479,6 +540,22 @@ test('client rollout gate fails closed except exact boolean true', () => {
   const extendSrc = readFileSync(join(repoRoot, 'js/src/forum/extendComposer.js'), 'utf8');
   assert.match(extendSrc, /shouldInstallComposerPresentation\(app\.forum\)/);
   assert.match(extendSrc, /function isRolloutMobile/);
+  assert.doesNotMatch(extendSrc, /function stripVnodeKey/);
+  assert.doesNotMatch(extendSrc, /hasOwnProperty\.call\(vnode,\s*['"]itemName['"]\)/);
+  // Lifecycle side effects must re-check the exact-true actor gate.
+  assert.match(extendSrc, /extend\(Composer\.prototype,\s*'oncreate'/);
+  assert.match(
+    extendSrc,
+    /oncreate[\s\S]*?if\s*\(\s*!shouldInstallComposerPresentation\(app\.forum\)\s*\)/
+  );
+  assert.match(
+    extendSrc,
+    /onupdate[\s\S]*?if\s*\(\s*!shouldInstallComposerPresentation\(app\.forum\)\s*\)/
+  );
+  assert.match(
+    extendSrc,
+    /ReplyComposer\.prototype,\s*'oncreate'[\s\S]*?if\s*\(\s*!shouldInstallComposerPresentation\(app\.forum\)\s*\)/
+  );
 });
 
 test('discussion inset preserves empty original padding across repeated applies', () => {
