@@ -1,0 +1,25 @@
+{
+  "guest": {
+    "flatrateComposerUiEnabled": false,
+    "type": "bool",
+    "canUpload": false
+  },
+  "admin": {
+    "flatrateComposerUiEnabled": true,
+    "type": "bool",
+    "canUpload": true,
+    "canStartDiscussion": true
+  },
+  "moderator": {
+    "flatrateComposerUiEnabled": false,
+    "type": "bool",
+    "canUpload": false,
+    "canStartDiscussion": true
+  },
+  "member": {
+    "flatrateComposerUiEnabled": false,
+    "type": "bool",
+    "canUpload": false,
+    "canStartDiscussion": true
+  }
+}

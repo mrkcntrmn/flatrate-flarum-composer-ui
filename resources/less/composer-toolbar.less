@@ -1,0 +1,92 @@
+@media @phone {
+  .Composer.Composer--flatrateMobile {
+    .FlatrateComposer-toolbar {
+      list-style: none;
+      margin: 0;
+      padding: 0 var(--fr-composer-edge);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 0 0 auto;
+      height: var(--fr-composer-toolbar-height);
+      min-height: var(--fr-composer-toolbar-height);
+      border-top: 1px solid var(--control-bg);
+      // Must stay overflow:visible so Dropdown menus are not clipped.
+      // Horizontal page overflow is constrained on the Composer shell instead.
+      overflow: visible;
+      flex-wrap: nowrap;
+
+      > li {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        // Reset Flarum's inherited TextEditor-controls list spacing so the
+        // 360px docked budget is buttons + gaps + padding only (no 10px margins).
+        margin-right: 0;
+      }
+
+      .Button,
+      .Button--icon {
+        min-width: var(--fr-composer-hit);
+        min-height: var(--fr-composer-hit);
+        width: var(--fr-composer-hit);
+        height: var(--fr-composer-hit);
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      // Nested Markdown button group: keep reachable without horizontal scroll.
+      .item-markdown,
+      .TextEditor-toolbar,
+      .ButtonGroup {
+        display: inline-flex;
+        flex-wrap: nowrap;
+        max-width: none;
+      }
+    }
+
+    .TextEditor-controls.FlatrateComposer-toolbar {
+      overflow: visible !important;
+    }
+
+    .FlatrateComposer-overflow {
+      position: relative;
+    }
+
+    // Flarum native Dropdown — on phone this is the bottom-sheet menu pattern,
+    // not a portal. Keep overflow:visible on the toolbar so the sheet is usable;
+    // Escape / backdrop / outside-close remain Flarum's own Dropdown behavior.
+    .FlatrateComposer-overflowDropdown {
+      .Dropdown-menu,
+      .FlatrateComposer-overflowMenu {
+        max-width: ~"min(280px, 90vw)";
+        max-height: ~"min(50vh, 320px)";
+        overflow: auto;
+        z-index: ~"calc(var(--zindex-composer) + 20)";
+      }
+
+      // Intact MarkdownToolbar / ButtonGroup inside the overflow menu:
+      // each formatting button stays individually tappable.
+      .MarkdownToolbar,
+      .ButtonGroup,
+      .item-markdown {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+        width: 100%;
+      }
+
+      .Dropdown-menu > li .Button,
+      .FlatrateComposer-overflowMenu .Button,
+      .MarkdownToolbar .Button,
+      .ButtonGroup .Button {
+        min-height: var(--fr-composer-hit);
+        min-width: var(--fr-composer-hit);
+        justify-content: flex-start;
+      }
+    }
+  }
+}

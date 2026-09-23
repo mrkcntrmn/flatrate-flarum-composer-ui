@@ -1,0 +1,240 @@
+// FlatRate mobile composer shell — scoped below 768px only.
+// Desktop/tablet (@tablet-up) remains native Flarum.
+
+@fr-composer-hit: 44px;
+@fr-composer-topbar-height: 52px;
+@fr-composer-metadata-min-height: 48px;
+@fr-composer-toolbar-height: 48px;
+@fr-composer-inline-gap: 8px;
+@fr-composer-section-gap: 16px;
+@fr-composer-edge: 16px;
+@fr-composer-radius: 6px;
+
+@media @phone {
+  .Composer.Composer--flatrateMobile {
+    --fr-composer-hit: @fr-composer-hit;
+    --fr-composer-topbar-height: @fr-composer-topbar-height;
+    --fr-composer-metadata-min-height: @fr-composer-metadata-min-height;
+    --fr-composer-toolbar-height: @fr-composer-toolbar-height;
+    --fr-composer-inline-gap: @fr-composer-inline-gap;
+    --fr-composer-section-gap: @fr-composer-section-gap;
+    --fr-composer-edge: @fr-composer-edge;
+    --fr-composer-radius: @fr-composer-radius;
+    --fr-composer-reply-max: ~"min(42dvh, 360px)";
+  }
+
+  // Single persistent app bar: close | title | Post — composed from native controls.
+  .Composer.Composer--flatrateDiscussion,
+  .Composer.Composer--flatrateReplyExpanded {
+    position: fixed !important;
+    inset: 0 !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    display: flex;
+    flex-direction: column;
+    border-radius: 0;
+    background: var(--body-bg);
+    z-index: var(--zindex-composer);
+    overflow-x: hidden;
+
+    &:before {
+      display: none;
+    }
+
+    .Composer-handle {
+      display: none;
+    }
+
+    .Composer-content {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0;
+      padding-top: var(--fr-composer-topbar-height);
+    }
+
+    .ComposerBody,
+    .ComposerBody-content {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      margin: 0;
+    }
+
+    .ComposerBody-avatar {
+      display: none;
+    }
+
+    // Close control — left of the single app-bar row.
+    .Composer-controls {
+      position: absolute;
+      top: env(safe-area-inset-top);
+      left: 0;
+      right: auto;
+      height: var(--fr-composer-topbar-height);
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      padding: 0 4px;
+      margin: 0;
+
+      > li {
+        display: inline-flex !important;
+      }
+
+      .Button {
+        min-width: var(--fr-composer-hit);
+        min-height: var(--fr-composer-hit);
+      }
+    }
+
+    // Native Post — right of the same app-bar row (not a second row).
+    .TextEditor-controls > .item-submit,
+    .FlatrateComposer-toolbar > .item-submit {
+      position: absolute !important;
+      top: env(safe-area-inset-top);
+      right: 8px;
+      height: var(--fr-composer-topbar-height);
+      z-index: 4;
+      display: flex !important;
+      align-items: center;
+      margin: 0;
+
+      .Button {
+        min-width: var(--fr-composer-hit);
+        min-height: var(--fr-composer-hit);
+      }
+    }
+
+    .ComposerBody-header {
+      margin: 0;
+      flex: 0 0 auto;
+
+      > li {
+        display: block;
+        min-height: var(--fr-composer-metadata-min-height);
+        padding: 8px var(--fr-composer-edge);
+        border-bottom: 1px solid var(--control-bg);
+        margin: 0;
+      }
+
+      // Centered title occupies the same app-bar band as close + Post.
+      > li.item-flatrateAppTitle,
+      > li.item-title {
+        position: absolute;
+        top: env(safe-area-inset-top);
+        left: var(--fr-composer-hit);
+        right: 96px;
+        height: var(--fr-composer-topbar-height);
+        min-height: var(--fr-composer-topbar-height);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 1px solid var(--control-bg);
+        margin: 0;
+        padding: 0 var(--fr-composer-edge);
+        text-align: center;
+        z-index: 3;
+        background: var(--body-bg);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      // Discussion uses flatrateAppTitle; hide stock "Start a Discussion" label.
+      .ComposerBody--discussion & > li.item-title {
+        display: none;
+      }
+
+      > li.item-discussionTitle {
+        min-height: 56px;
+        max-height: 64px;
+        display: flex;
+        align-items: center;
+
+        h3,
+        input {
+          width: 100%;
+          font-size: 20px;
+          font-weight: 600;
+          line-height: 28px;
+        }
+
+        input {
+          font-size: 16px;
+          font-weight: 600;
+        }
+      }
+
+      > li.item-tags {
+        min-height: var(--fr-composer-metadata-min-height);
+      }
+    }
+
+    .ComposerBody-editor {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0;
+    }
+
+    .TextEditor--flatrateMobile {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .TextEditor-editorContainer {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      padding: var(--fr-composer-section-gap) var(--fr-composer-edge);
+    }
+
+    .Composer-flexible,
+    textarea.TextEditor-editor {
+      flex: 1 1 auto;
+      width: 100%;
+      height: 100% !important;
+      min-height: 120px;
+      max-height: none !important;
+      resize: none;
+      font-size: 16px;
+      line-height: 1.45;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+    }
+  }
+
+  .FlatrateComposer-appTitle {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--heading-color);
+  }
+}
+
+@media @tablet-up {
+  .FlatrateComposer-overflow,
+  .FlatrateComposer-replyContext,
+  .FlatrateComposer-expand,
+  .FlatrateComposer-appTitle {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .Composer.Composer--flatrateMobile,
+  .Composer.Composer--flatrateMobile * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
