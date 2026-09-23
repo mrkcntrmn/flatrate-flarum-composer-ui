@@ -23,6 +23,7 @@
     --fr-composer-reply-max: min(42dvh, 360px);
   }
 
+  // Single persistent app bar: close | title | Post — composed from native controls.
   .Composer.Composer--flatrateDiscussion,
   .Composer.Composer--flatrateReplyExpanded {
     position: fixed !important;
@@ -37,6 +38,7 @@
     border-radius: 0;
     background: var(--body-bg);
     z-index: var(--zindex-composer);
+    overflow-x: hidden;
 
     &:before {
       display: none;
@@ -52,6 +54,7 @@
       flex-direction: column;
       min-height: 0;
       padding: 0;
+      padding-top: var(--fr-composer-topbar-height);
     }
 
     .ComposerBody,
@@ -67,6 +70,47 @@
       display: none;
     }
 
+    // Close control — left of the single app-bar row.
+    .Composer-controls {
+      position: absolute;
+      top: env(safe-area-inset-top);
+      left: 0;
+      right: auto;
+      height: var(--fr-composer-topbar-height);
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      padding: 0 4px;
+      margin: 0;
+
+      > li {
+        display: inline-flex !important;
+      }
+
+      .Button {
+        min-width: var(--fr-composer-hit);
+        min-height: var(--fr-composer-hit);
+      }
+    }
+
+    // Native Post — right of the same app-bar row (not a second row).
+    .TextEditor-controls > .item-submit,
+    .FlatrateComposer-toolbar > .item-submit {
+      position: absolute !important;
+      top: env(safe-area-inset-top);
+      right: 8px;
+      height: var(--fr-composer-topbar-height);
+      z-index: 4;
+      display: flex !important;
+      align-items: center;
+      margin: 0;
+
+      .Button {
+        min-width: var(--fr-composer-hit);
+        min-height: var(--fr-composer-hit);
+      }
+    }
+
     .ComposerBody-header {
       margin: 0;
       flex: 0 0 auto;
@@ -79,9 +123,15 @@
         margin: 0;
       }
 
-      // App title band replaces stock first-row phone chrome.
-      > li.item-flatrateAppTitle {
+      // Centered title occupies the same app-bar band as close + Post.
+      > li.item-flatrateAppTitle,
+      > li.item-title {
+        position: absolute;
+        top: env(safe-area-inset-top);
+        left: var(--fr-composer-hit);
+        right: 96px;
         height: var(--fr-composer-topbar-height);
+        min-height: var(--fr-composer-topbar-height);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -89,10 +139,16 @@
         margin: 0;
         padding: 0 var(--fr-composer-edge);
         text-align: center;
+        z-index: 3;
+        background: var(--body-bg);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
-      > li.item-title {
-        display: none; // discussion "Start a Discussion" stock label; we use flatrateAppTitle
+      // Discussion uses flatrateAppTitle; hide stock "Start a Discussion" label.
+      .ComposerBody--discussion & > li.item-title {
+        display: none;
       }
 
       > li.item-discussionTitle {
@@ -110,7 +166,7 @@
         }
 
         input {
-          font-size: 16px; // iOS zoom guard; visual weight from container
+          font-size: 16px;
           font-weight: 600;
         }
       }
@@ -135,35 +191,6 @@
       min-height: 0;
     }
 
-    .FlatrateComposer-topBar {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      min-height: var(--fr-composer-topbar-height);
-      padding: 0 var(--fr-composer-edge);
-      border-bottom: 1px solid var(--control-bg);
-      flex: 0 0 auto;
-    }
-
-    .FlatrateComposer-topBarActions {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      gap: var(--fr-composer-inline-gap);
-
-      .item-submit .Button {
-        min-width: var(--fr-composer-hit);
-        min-height: var(--fr-composer-hit);
-      }
-    }
-
-    // Native submit lives in the top bar for fullscreen modes; hide duplicate slot.
-    .FlatrateComposer-toolbar > .item-submit {
-      display: none;
-    }
-
     .TextEditor-editorContainer {
       flex: 1 1 auto;
       min-height: 0;
@@ -186,24 +213,6 @@
       box-shadow: none;
       background: transparent;
     }
-
-    .Composer-controls {
-      position: absolute;
-      top: env(safe-area-inset-top);
-      left: 0;
-      right: auto;
-      z-index: 2;
-      padding: 4px;
-
-      > li {
-        display: inline-flex !important;
-      }
-
-      .Button {
-        min-width: var(--fr-composer-hit);
-        min-height: var(--fr-composer-hit);
-      }
-    }
   }
 
   .FlatrateComposer-appTitle {
@@ -214,15 +223,6 @@
 }
 
 @media @tablet-up {
-  // Extension classes must be inert at 768px+.
-  .Composer.Composer--flatrateMobile,
-  .Composer.Composer--flatrateDiscussion,
-  .Composer.Composer--flatrateReplyDocked,
-  .Composer.Composer--flatrateReplyExpanded {
-    /* no-op: native Flarum tablet-up composer */
-  }
-
-  .FlatrateComposer-topBar,
   .FlatrateComposer-overflow,
   .FlatrateComposer-replyContext,
   .FlatrateComposer-expand,

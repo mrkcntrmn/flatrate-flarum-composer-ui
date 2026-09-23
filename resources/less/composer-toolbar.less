@@ -11,6 +11,8 @@
       height: var(--fr-composer-toolbar-height);
       min-height: var(--fr-composer-toolbar-height);
       border-top: 1px solid var(--control-bg);
+      // Must stay overflow:visible so Dropdown menus are not clipped.
+      // Horizontal page overflow is constrained on the Composer shell instead.
       overflow: visible;
       flex-wrap: nowrap;
 
@@ -32,45 +34,40 @@
         align-items: center;
         justify-content: center;
       }
+
+      // Nested Markdown button group: keep reachable without horizontal scroll.
+      .item-markdown,
+      .TextEditor-toolbar,
+      .ButtonGroup {
+        display: inline-flex;
+        flex-wrap: nowrap;
+        max-width: none;
+      }
     }
 
-    // Kill native horizontal scrollbar on toolbar.
-    .TextEditor-controls,
-    .TextEditor-toolbar,
-    .FlatrateComposer-toolbar {
-      overflow-x: hidden !important;
-      overflow-y: visible !important;
+    .TextEditor-controls.FlatrateComposer-toolbar {
+      overflow: visible !important;
     }
 
     .FlatrateComposer-overflow {
       position: relative;
     }
 
-    .FlatrateComposer-overflowMenu {
-      position: absolute;
-      left: 0;
-      bottom: calc(100% + 6px);
-      z-index: calc(~"var(--zindex-composer) + 5");
-      list-style: none;
-      margin: 0;
-      padding: 6px;
-      min-width: 180px;
-      max-width: min(280px, 90vw);
-      max-height: min(50vh, 320px);
-      overflow: auto;
-      background: var(--body-bg);
-      border: 1px solid var(--control-bg);
-      border-radius: var(--fr-composer-radius);
-      box-shadow: 0 2px 8px var(--shadow-color);
-
-      > li {
-        display: block;
+    // Flarum Dropdown menu — open upward; not clipped by the toolbar.
+    .FlatrateComposer-overflowDropdown {
+      .Dropdown-menu,
+      .FlatrateComposer-overflowMenu {
+        max-width: min(280px, 90vw);
+        max-height: min(50vh, 320px);
+        overflow: auto;
+        z-index: calc(~"var(--zindex-composer) + 20");
       }
 
-      .Button {
+      .Dropdown-menu > li .Button,
+      .FlatrateComposer-overflowMenu .Button {
+        min-height: var(--fr-composer-hit);
         width: 100%;
         justify-content: flex-start;
-        min-height: var(--fr-composer-hit);
       }
     }
   }
