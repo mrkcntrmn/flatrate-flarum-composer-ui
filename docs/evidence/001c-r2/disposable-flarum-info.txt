@@ -1,0 +1,32 @@
+Flarum core: 1.8.19
+PHP version: CLI: 8.2.33, Web: 8.2.33
+PHP memory limit: CLI: 128M, Web: unable to detect
+MySQL version: 10.11.19-MariaDB-ubu2204
+Loaded extensions: Core, date, libxml, openssl, pcre, sqlite3, zlib, ctype, curl, dom, fileinfo, filter, hash, iconv, json, mbstring, SPL, session, PDO, pdo_sqlite, standard, posix, random, readline, Reflection, Phar, SimpleXML, tokenizer, xml, xmlreader, xmlwriter, mysqlnd, gd, intl, mysqli, pdo_mysql, sodium, zip, Zend OPcache
++------------------------------+----------+--------+-------+
+| Flarum Extensions            |          |        |       |
++------------------------------+----------+--------+-------+
+| ID                           | Version  | Commit | Notes |
++------------------------------+----------+--------+-------+
+| fof-oauth                    | 1.7.4    |        |       |
+| flarum-tags                  | v1.8.8   |        |       |
+| flarum-nicknames             | v1.8.3   |        |       |
+| fof-upload                   | 1.9.0    |        |       |
+| fof-polls                    | 2.3.5    |        |       |
+| flatrate-wiki-supabase-oauth | dev-main |        |       |
+| flatrate-composer-ui         | dev-main |        |       |
+| flarum-sticky                | v1.8.3   |        |       |
+| flarum-mentions              | v1.8.6   |        |       |
+| flarum-markdown              | v1.8.1   |        |       |
+| flarum-likes                 | v1.8.1   |        |       |
+| flarum-emoji                 | v1.8.1   |        |       |
+| flarum-bbcode                | v1.8.0   |        |       |
++------------------------------+----------+--------+-------+
+Base URL: http://127.0.0.1:8299
+Installation path: /app
+Queue driver: sync
+Session driver: file
+Scheduler status: Never run
+Mail driver: mail
+Debug mode: ON
+

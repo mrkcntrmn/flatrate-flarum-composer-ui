@@ -1,0 +1,38 @@
+{
+  "work_order": "FORUM-MOBILE-COMPOSER-001C-R2",
+  "base_sha": "76d5f971409fc69f31491041471301df98848209",
+  "captured_at": "2026-09-23T23:12:24Z",
+  "member_cutover": "0",
+  "lifecycle": {
+    "admin_resize": true,
+    "admin_focus_on_reply": true,
+    "member": false,
+    "moderator": false,
+    "guest": false
+  },
+  "toolbar_admin": {
+    "unknown": 0,
+    "visible": [
+      "fof-upload",
+      "fof-upload-media",
+      "mention",
+      "emoji",
+      "overflow",
+      "submit"
+    ],
+    "markdown_overflow": true
+  },
+  "job_breakdown": {
+    "toggle_present": true,
+    "native_submit_path": "POST /api/posts",
+    "attribute_on_data": true,
+    "clear_preserves_unrelated_probe": true,
+    "clear_preserves_content": true,
+    "dock_expand_preserves_marker": true,
+    "technician_prompts": false
+  },
+  "editor_identity_767_768": true,
+  "keyboard_safe_area_instrumented": true,
+  "rollback_attribute_absent_when_disabled": true,
+  "real_ios_android": "FOLLOW_UP_CANARY"
+}

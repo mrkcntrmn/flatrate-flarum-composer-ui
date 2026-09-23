@@ -3,11 +3,13 @@
 ```text
 WORK_ORDER=FORUM-MOBILE-COMPOSER-001C-R2
 STATUS=PASS
+QUALIFIED_IMPLEMENTATION_SHA=284258e6e384198f7e8edc4ab23842afb944e363
+EVIDENCE_COMMIT=3fcb34bc66aba8575a6d5231e7ff1569bd0e7692
 BASE_SHA=76d5f971409fc69f31491041471301df98848209
-HEAD_SHA=284258e6e384198f7e8edc4ab23842afb944e363
 BRANCH=feat/forum-mobile-composer-001b
 PR=https://github.com/mrkcntrmn/flatrate-flarum-composer-ui/pull/1
 REVIEW=https://github.com/mrkcntrmn/flatrate-flarum-composer-ui/pull/1#pullrequestreview-5297602947
+DURABLE_EVIDENCE=docs/evidence/001c-r2/
 MEMBER_CUTOVER_VALUE=0
 PRODUCTION_MUTATED=false
 PR_MERGED=false
@@ -71,9 +73,10 @@ Additional proofs:
 - Rollback: disable + cache clear → attribute absent; re-enable restores admin
   true / guest false with cutover still `0`
 
-Real iOS/Android DVH evidence remains follow-up canary work; instrumented
-browser evidence archived under
-`/tmp/forum-mobile-composer-001c-r1/evidence/r2-*`.
+Durable browser artifacts and checksums:
+[`docs/evidence/001c-r2/MANIFEST.md`](./001c-r2/MANIFEST.md).
+
+Real iOS/Android DVH evidence remains follow-up canary observation work.
 
 ## Stop conditions
 
