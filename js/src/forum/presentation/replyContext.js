@@ -2,10 +2,13 @@
  * Targeted-reply presentation derived from canonical mention/quote text.
  * Never persists a separate reply-target model.
  *
+ * Only a leading post-mention token (optional leading whitespace) qualifies.
+ * Mentions later in ordinary prose are not reply context.
+ *
  * Matches Flarum Mentions post tokens such as: @"Display Name"#p123
  */
 
-const POST_MENTION_RE = /@"([^"]+)"#p(\d+)/;
+const LEADING_POST_MENTION_RE = /^\s*(@"([^"]+)"#p(\d+))/;
 const POST_MENTION_GLOBAL_RE = /@"([^"]+)"#p(\d+)/g;
 
 /**
@@ -16,22 +19,22 @@ export function deriveReplyContext(content) {
   if (typeof content !== 'string' || !content) {
     return null;
   }
-  const match = POST_MENTION_RE.exec(content);
+  const match = LEADING_POST_MENTION_RE.exec(content);
   if (!match) {
     return null;
   }
+  const leading = match[0];
+  const token = match[1];
   return {
-    username: match[1],
-    postId: match[2],
-    token: match[0],
-    index: match.index,
+    username: match[2],
+    postId: match[3],
+    token,
+    index: leading.length - token.length,
   };
 }
 
 /**
- * Lossless removal: only remove the exact leading/first token plus one
- * trailing space when present, and only when that is the sole matched token
- * at the derived index.
+ * Lossless removal of the canonical leading reply token (+ one trailing space).
  *
  * @returns {{ next: string, removed: boolean }}
  */
@@ -40,18 +43,22 @@ export function removeReplyContextToken(content, context) {
     return { next: content, removed: false };
   }
 
-  const at = content.indexOf(context.token);
-  if (at !== context.index || at < 0) {
+  const live = deriveReplyContext(content);
+  if (!live || live.token !== context.token || live.index !== context.index) {
     return { next: content, removed: false };
   }
 
-  let end = at + context.token.length;
+  const match = LEADING_POST_MENTION_RE.exec(content);
+  if (!match) {
+    return { next: content, removed: false };
+  }
+
+  let end = match[0].length;
   if (content[end] === ' ') {
     end += 1;
   }
 
-  const next = content.slice(0, at) + content.slice(end);
-  return { next, removed: true };
+  return { next: content.slice(end), removed: true };
 }
 
 /**

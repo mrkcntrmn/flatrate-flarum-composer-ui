@@ -5,6 +5,7 @@ import DiscussionComposer from 'flarum/forum/components/DiscussionComposer';
 import ReplyComposer from 'flarum/forum/components/ReplyComposer';
 import TextEditor from 'flarum/common/components/TextEditor';
 import Button from 'flarum/common/components/Button';
+import Dropdown from 'flarum/common/components/Dropdown';
 import classList from 'flarum/common/utils/classList';
 import icon from 'flarum/common/helpers/icon';
 
@@ -29,7 +30,10 @@ import {
   removeReplyContextToken,
   isReplyContextInSync,
 } from './presentation/replyContext';
-import { partitionToolbarKeys } from './presentation/toolbarOverflow';
+import {
+  orderedItemKeys,
+  partitionComposerActions,
+} from './presentation/toolbarOverflow';
 import {
   applyDiscussionInset,
   clearDiscussionInset,
@@ -38,7 +42,6 @@ import {
 } from './presentation/scrollInset';
 
 function resolveEditPostComposer() {
-  // Optional — do not hard-require; missing compat must not crash boot.
   const compat = typeof flarum !== 'undefined' && flarum.core && flarum.core.compat;
   if (!compat) {
     return null;
@@ -106,9 +109,23 @@ function getViewportHeightSafe() {
 }
 
 /**
- * Count native submit controls under a composer root.
- * Fullscreen CSS repositions the same .item-submit node — it must not duplicate.
+ * True when FlatRate mobile presentation should decorate the composer.
+ * EditPostComposer and desktop remain native.
  */
+function isMobilePresentationForEditor(textEditor) {
+  if (!isMobileViewport()) {
+    return false;
+  }
+  const composerState = textEditor && textEditor.attrs && textEditor.attrs.composer;
+  const kind = resolveComposerKind(composerState && composerState.body, composerTypes());
+  const mode = resolvePresentationMode({
+    kind,
+    mobile: true,
+    replyExpanded: getReplyExpanded(),
+  });
+  return mode !== 'native';
+}
+
 export function countSubmitControls(root) {
   if (!root || typeof root.querySelectorAll !== 'function') {
     return 0;
@@ -116,9 +133,6 @@ export function countSubmitControls(root) {
   return root.querySelectorAll('.item-submit').length;
 }
 
-/**
- * Read the live editor DOM node (textarea or contenteditable surface).
- */
 export function findEditorNode(root) {
   if (!root || typeof root.querySelector !== 'function') {
     return null;
@@ -130,8 +144,57 @@ export function findEditorNode(root) {
   );
 }
 
+function renderItem(itemList, key) {
+  const item = itemList && itemList.items && itemList.items[key];
+  if (!item) {
+    return null;
+  }
+  return <li className={`item-${key}`}>{item.content}</li>;
+}
+
+/**
+ * Mobile footer: same control/toolbar ItemList VNodes, priority-ordered,
+ * with overflow via Flarum Dropdown (portal/menu outside clipping toolbar).
+ */
+function renderMobileControls(component, controls, toolbar) {
+  const controlKeys = orderedItemKeys(controls);
+  const toolbarKeys = orderedItemKeys(toolbar);
+  const { visible, overflow } = partitionComposerActions(
+    { controlKeys, toolbarKeys },
+    { maxVisible: 5, narrow: getViewportWidthSafe() < 400 }
+  );
+
+  const submit = controls.items && controls.items.submit ? controls.items.submit.content : null;
+  const overflowLabel = app.translator.trans('flatrate-composer-ui.forum.toolbar_overflow');
+
+  return (
+    <ul className="TextEditor-controls Composer-footer FlatrateComposer-toolbar" role="toolbar">
+      {visible.map((ref) => renderItem(ref.source === 'control' ? controls : toolbar, ref.key))}
+      {overflow.length ? (
+        <li className="item-flatrateOverflow FlatrateComposer-overflow">
+          <Dropdown
+            className="Dropdown FlatrateComposer-overflowDropdown"
+            buttonClassName="Button Button--icon FlatrateComposer-overflowToggle"
+            menuClassName="Dropdown-menu Dropdown-menu--top FlatrateComposer-overflowMenu"
+            icon="fas fa-ellipsis-h"
+            caretIcon={null}
+            label={overflowLabel}
+            accessibleToggleLabel={overflowLabel}
+          >
+            {overflow.map((ref) => {
+              const list = ref.source === 'control' ? controls : toolbar;
+              const item = list.items && list.items[ref.key];
+              return item ? item.content : null;
+            })}
+          </Dropdown>
+        </li>
+      ) : null}
+      {submit ? <li className="item-submit App-primaryControl">{submit}</li> : null}
+    </ul>
+  );
+}
+
 export default function extendComposer() {
-  // --- Composer root classes + height/padding overrides ---
   extend(Composer.prototype, 'view', function (vnode) {
     const mode = currentMode(this);
     const extras = modeClassNames(mode);
@@ -231,7 +294,6 @@ export default function extendComposer() {
     });
   });
 
-  // --- Discussion placeholders; native title/body streams retained ---
   const originalDiscussionInitAttrs = DiscussionComposer.initAttrs;
   DiscussionComposer.initAttrs = function (attrs) {
     originalDiscussionInitAttrs.call(this, attrs);
@@ -242,21 +304,20 @@ export default function extendComposer() {
     attrs.titlePlaceholder = app.translator.trans('flatrate-composer-ui.forum.discussion_title_placeholder');
   };
 
-  // Centered app-bar title for Start Discussion (presentation only).
+  // Presentation-only title for the single fullscreen app-bar row (CSS-composed with close + Post).
   extend(DiscussionComposer.prototype, 'headerItems', function (items) {
     if (!isMobileViewport()) {
       return;
     }
     items.add(
       'flatrateAppTitle',
-      <div className="FlatrateComposer-appTitle" aria-hidden="false">
+      <div className="FlatrateComposer-appTitle">
         {app.translator.trans('flatrate-composer-ui.forum.start_discussion')}
       </div>,
       200
     );
   });
 
-  // --- Reply expand + derived context (same ReplyComposer / TextEditor instances) ---
   extend(ReplyComposer.prototype, 'headerItems', function (items) {
     if (!isMobileViewport()) {
       return;
@@ -363,86 +424,34 @@ export default function extendComposer() {
     clearDiscussionInset(contentElement());
   });
 
-  // --- Toolbar: keep native TextEditor view/DOM; reflow via partitioned ItemList + CSS ---
-  extend(TextEditor.prototype, 'oninit', function () {
-    this.flatrateOverflowOpen = false;
-  });
-
+  /**
+   * Stable TextEditor tree across 767↔768 and docked↔expanded:
+   *   .TextEditor
+   *     .TextEditor-editorContainer   // ALWAYS first child from original() — owns BasicEditorDriver
+   *     ul.TextEditor-controls        // second child (may be reflowed on mobile)
+   *
+   * Never insert presentation chrome before the editorContainer and never
+   * replace the original editorContainer vnode when toggling presentation.
+   */
   override(TextEditor.prototype, 'view', function (original) {
-    if (!isMobileViewport()) {
-      return original();
+    const vnode = original();
+
+    if (!isMobilePresentationForEditor(this)) {
+      return vnode;
     }
 
-    const composerState = this.attrs.composer;
-    const kind = resolveComposerKind(composerState && composerState.body, composerTypes());
-    const mode = resolvePresentationMode({
-      kind,
-      mobile: true,
-      replyExpanded: getReplyExpanded(),
-    });
-    if (mode === 'native') {
-      return original();
-    }
+    vnode.attrs = vnode.attrs || {};
+    vnode.attrs.className = classList(vnode.attrs.className, 'TextEditor--flatrateMobile');
 
-    // Stable tree: editorContainer position never changes across docked/expanded.
     const controls = this.controlItems();
     const toolbar = this.toolbarItems();
-    const toolbarKeys = Object.keys((toolbar && toolbar.items) || {});
-    const { visible, overflow } = partitionToolbarKeys(toolbarKeys, {
-      maxVisible: 5,
-      narrow: getViewportWidthSafe() < 400,
-    });
+    const mobileFooter = renderMobileControls(this, controls, toolbar);
 
-    const renderKeyed = (key) => {
-      const item = toolbar.items[key];
-      return item ? <li className={`item-${key}`}>{item.content}</li> : null;
-    };
+    // Keep original editorContainer identity/position; only replace the controls list.
+    if (Array.isArray(vnode.children) && vnode.children.length) {
+      vnode.children = [vnode.children[0], mobileFooter];
+    }
 
-    const submitItem = controls.items.submit ? (
-      <li className="item-submit App-primaryControl">{controls.items.submit.content}</li>
-    ) : null;
-
-    const extraControls = Object.keys(controls.items || {})
-      .filter((key) => key !== 'submit')
-      .map((key) => <li className={`item-${key}`}>{controls.items[key].content}</li>);
-
-    return (
-      <div className={classList('TextEditor', 'TextEditor--flatrateMobile')}>
-        <div className="FlatrateComposer-topBar" role="banner">
-          <div className="FlatrateComposer-topBarMain" />
-          <ul className="FlatrateComposer-topBarActions">{submitItem}</ul>
-        </div>
-
-        <div className="TextEditor-editorContainer" />
-
-        <ul className="TextEditor-controls Composer-footer FlatrateComposer-toolbar" role="toolbar">
-          {visible.map(renderKeyed)}
-          {overflow.length ? (
-            <li className="FlatrateComposer-overflow item-flatrateOverflow">
-              <Button
-                className="Button Button--icon FlatrateComposer-overflowToggle"
-                aria-expanded={this.flatrateOverflowOpen ? 'true' : 'false'}
-                aria-haspopup="true"
-                aria-label={app.translator.trans('flatrate-composer-ui.forum.toolbar_overflow')}
-                onclick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  this.flatrateOverflowOpen = !this.flatrateOverflowOpen;
-                  m.redraw();
-                }}
-              >
-                {icon('fas fa-ellipsis-h')}
-              </Button>
-              {this.flatrateOverflowOpen ? (
-                <ul className="FlatrateComposer-overflowMenu" role="menu">
-                  {overflow.map(renderKeyed)}
-                </ul>
-              ) : null}
-            </li>
-          ) : null}
-          {extraControls}
-        </ul>
-      </div>
-    );
+    return vnode;
   });
 }
