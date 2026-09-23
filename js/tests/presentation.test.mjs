@@ -23,8 +23,10 @@ import {
   countPostMentionTokens,
 } from '../src/forum/presentation/replyContext.js';
 import {
+  orderedItemKeys,
+  partitionComposerActions,
   partitionToolbarKeys,
-  classifyToolbarKey,
+  classifyActionKey,
   assertNoHorizontalScrollbarIntent,
 } from '../src/forum/presentation/toolbarOverflow.js';
 import {
@@ -33,6 +35,25 @@ import {
   measureDockHeight,
   restoreScrollTop,
 } from '../src/forum/presentation/scrollInset.js';
+
+function mockEl(initialPadding = '') {
+  return {
+    style: { paddingBottom: initialPadding },
+    attrs: {},
+    hasAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attrs, name);
+    },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = value;
+    },
+    removeAttribute(name) {
+      delete this.attrs[name];
+    },
+  };
+}
 
 test('mobile boundary is below 768px', () => {
   assert.equal(isMobileViewport(767.98), true);
@@ -79,55 +100,113 @@ test('scroll anchor capture/restore', () => {
   assert.equal(consumeScrollAnchor(), null);
 });
 
-test('reply context derives from canonical mention token', () => {
-  const content = '@"tech_119"#p587 hello';
-  const ctx = deriveReplyContext(content);
+test('reply context only matches canonical leading token', () => {
+  const leading = '@"tech_119"#p587 hello';
+  const ctx = deriveReplyContext(leading);
   assert.equal(ctx.username, 'tech_119');
   assert.equal(ctx.postId, '587');
-  assert.equal(isReplyContextInSync(content, ctx), true);
-  assert.equal(isReplyContextInSync('changed', ctx), false);
+  assert.equal(isReplyContextInSync(leading, ctx), true);
 
-  const removed = removeReplyContextToken(content, ctx);
+  const withWhitespace = '  @"tech_119"#p587 body';
+  const ws = deriveReplyContext(withWhitespace);
+  assert.ok(ws);
+  assert.equal(ws.token, '@"tech_119"#p587');
+
+  assert.equal(deriveReplyContext('see @"tech_119"#p587 later'), null);
+  assert.equal(deriveReplyContext('hello @"a"#p1 and @"b"#p2'), null);
+
+  const multi = '@"first"#p1 then @"second"#p2';
+  const firstOnly = deriveReplyContext(multi);
+  assert.equal(firstOnly.postId, '1');
+  assert.equal(countPostMentionTokens(multi), 2);
+
+  const removed = removeReplyContextToken(leading, ctx);
   assert.equal(removed.removed, true);
   assert.equal(removed.next, 'hello');
-  assert.equal(countPostMentionTokens(content), 1);
+
+  const stale = removeReplyContextToken('@"other"#p9 x', ctx);
+  assert.equal(stale.removed, false);
+  assert.equal(isReplyContextInSync('changed', ctx), false);
   assert.equal(deriveReplyContext('no token'), null);
 });
 
-test('toolbar partition keeps unknowns in overflow', () => {
-  const keys = ['fof-upload', 'mention', 'bold', 'italic', 'link', 'emoji', 'spoiler', 'preview'];
-  const { visible, overflow } = partitionToolbarKeys(keys, { maxVisible: 5, narrow: true });
-  assert.ok(visible.includes('fof-upload'));
-  assert.ok(visible.includes('mention'));
-  assert.ok(overflow.includes('emoji'));
-  assert.ok(overflow.includes('spoiler'));
-  assert.ok(overflow.includes('preview'));
-  assert.equal(classifyToolbarKey('mystery-widget'), 'unknown');
-  assert.equal(assertNoHorizontalScrollbarIntent(visible.length, 5), true);
-});
-
-test('discussion inset applies and clears without clobbering prior padding', () => {
-  const el = {
-    style: { paddingBottom: '12px' },
-    attrs: {},
-    getAttribute(name) {
-      return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
-    },
-    setAttribute(name, value) {
-      this.attrs[name] = value;
-    },
-    removeAttribute(name) {
-      delete this.attrs[name];
+test('ItemList keys are ordered by priority', () => {
+  const list = {
+    items: {
+      low: { content: 'L', priority: 0 },
+      high: { content: 'H', priority: 100 },
+      mid: { content: 'M', priority: 50 },
     },
   };
+  assert.deepEqual(orderedItemKeys(list), ['high', 'mid', 'low']);
+});
+
+test('production-shaped Markdown / Mentions / Emoji / FoF Upload / preview partition', () => {
+  // Flarum 1.8 topology fixtures
+  const controlKeys = ['submit', 'preview', 'fof-upload', 'fof-upload-media'];
+  const toolbarKeys = ['markdown', 'mention', 'emoji', 'mystery-ext'];
+
+  assert.equal(classifyActionKey('markdown'), 'markdown');
+  assert.equal(classifyActionKey('fof-upload'), 'upload');
+  assert.equal(classifyActionKey('fof-upload-media'), 'media');
+  assert.equal(classifyActionKey('submit'), 'submit');
+
+  const { visible, overflow } = partitionComposerActions(
+    { controlKeys, toolbarKeys },
+    { maxVisible: 5, narrow: true }
+  );
+
+  const visibleKeys = visible.map((r) => r.key);
+  const overflowKeys = overflow.map((r) => r.key);
+
+  assert.ok(visibleKeys.includes('fof-upload'));
+  assert.ok(visibleKeys.includes('fof-upload-media'));
+  assert.ok(visibleKeys.includes('mention'));
+  assert.ok(visibleKeys.includes('markdown'));
+  assert.ok(!visibleKeys.includes('submit'));
+  assert.ok(overflowKeys.includes('preview'));
+  assert.ok(overflowKeys.includes('mystery-ext'));
+  assert.ok(overflowKeys.includes('emoji') || visibleKeys.includes('emoji'));
+  assert.equal(assertNoHorizontalScrollbarIntent(visible.length, 5), true);
+
+  // Priority order within toolbar source is preserved relative to input order
+  // when priorities are equal — use orderedItemKeys at the call site.
+  const toolbarList = {
+    items: {
+      emoji: { priority: 10 },
+      mention: { priority: 50 },
+      markdown: { priority: 100 },
+    },
+  };
+  assert.deepEqual(orderedItemKeys(toolbarList), ['markdown', 'mention', 'emoji']);
+
+  const legacy = partitionToolbarKeys(['markdown', 'mention', 'emoji', 'spoiler'], { maxVisible: 3 });
+  assert.ok(legacy.visible.includes('markdown'));
+  assert.ok(legacy.overflow.includes('spoiler'));
+});
+
+test('discussion inset preserves empty original padding across repeated applies', () => {
+  const el = mockEl('');
 
   applyDiscussionInset(el, 180);
   assert.equal(el.style.paddingBottom, '180px');
+  assert.equal(el.getAttribute('data-flatrate-composer-inset'), '');
+
+  applyDiscussionInset(el, 220);
+  assert.equal(el.style.paddingBottom, '220px');
+  assert.equal(el.getAttribute('data-flatrate-composer-inset'), '');
+
   clearDiscussionInset(el);
-  assert.equal(el.style.paddingBottom, '12px');
+  assert.equal(el.style.paddingBottom, '');
+  assert.equal(el.hasAttribute('data-flatrate-composer-inset'), false);
+
+  const withPrior = mockEl('12px');
+  applyDiscussionInset(withPrior, 180);
+  applyDiscussionInset(withPrior, 200);
+  clearDiscussionInset(withPrior);
+  assert.equal(withPrior.style.paddingBottom, '12px');
 
   assert.equal(measureDockHeight({ getBoundingClientRect: () => ({ height: 120 }) }, 10), 130);
-
   const scroller = { scrollTop: 0 };
   assert.equal(restoreScrollTop(scroller, 99), true);
   assert.equal(scroller.scrollTop, 99);

@@ -12,6 +12,7 @@
     background: var(--body-bg);
     box-shadow: 0 -2px 8px var(--shadow-color);
     z-index: var(--zindex-composer);
+    overflow-x: hidden;
 
     &:before {
       display: none;
@@ -38,9 +39,14 @@
         border: 0;
         padding: 4px 0;
         min-height: 0;
+        position: static;
+        left: auto;
+        right: auto;
+        top: auto;
+        height: auto;
+        background: transparent;
       }
 
-      // Keep discussion title compact; expand control stays reachable.
       > li.item-title {
         font-size: 13px;
         opacity: 0.85;
@@ -50,16 +56,15 @@
       }
     }
 
-    .FlatrateComposer-topBar {
-      // Submit stays in the docked footer toolbar for quick reply.
-      display: none;
-    }
-
-    .FlatrateComposer-toolbar {
-      .item-submit {
-        display: flex;
-        margin-left: auto;
-      }
+    // Docked: Post stays in the footer toolbar, not the fullscreen app-bar slot.
+    .TextEditor-controls > .item-submit,
+    .FlatrateComposer-toolbar > .item-submit {
+      position: static !important;
+      top: auto;
+      right: auto;
+      height: auto;
+      margin-left: auto;
+      display: flex !important;
     }
 
     .Composer-flexible,
@@ -72,9 +77,11 @@
     }
 
     .Composer-controls {
+      position: absolute;
       top: 4px;
       right: 4px;
       left: auto;
+      height: auto;
 
       > li {
         display: inline-flex !important;
@@ -113,15 +120,16 @@
   }
 
   .Composer.Composer--flatrateReplyExpanded {
-    .FlatrateComposer-topBar {
-      display: flex;
-    }
-
     .item-flatrateReplyExpand {
       position: absolute;
       top: calc(env(safe-area-inset-top) + 4px);
       right: 52px;
-      z-index: 3;
+      z-index: 5;
+    }
+
+    // Reply discussion title fills the centered app-bar title slot.
+    .ComposerBody-header > li.item-title {
+      display: flex;
     }
   }
 }
