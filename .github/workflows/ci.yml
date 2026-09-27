@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+
+jobs:
+  php:
+    name: PHP validate + unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+          extensions: curl, dom, mbstring, openssl, pdo, tokenizer, xml, xmlwriter, zip
+      - name: Composer validate
+        run: |
+          # Lock is intentionally not published for this extension package.
+          rm -f composer.lock
+          composer validate --no-check-publish --strict
+      - name: Install package dependencies
+        run: composer update --no-interaction --prefer-dist
+      - name: PHP syntax check
+        run: |
+          find src tests extend.php -type f -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+      - name: PHPUnit
+        run: vendor/bin/phpunit --colors=always
+      - name: Rollout runner
+        run: php tests/run-rollout.php
+
+  js:
+    name: JS install + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - name: Install JS dependencies
+        working-directory: js
+        run: npm ci
+      - name: JS unit tests
+        run: node --test js/tests/*.test.mjs
+      - name: Build forum assets
+        working-directory: js
+        run: npm run build
+      - name: Verify tracked dist is reproducible
+        run: |
+          git diff --exit-code -- \
+            js/dist/forum.js \
+            js/dist/forum.js.map \
+            js/dist/admin.js \
+            js/dist/admin.js.map
+
+  flarum-install-smoke:
+    name: Flarum 1.8.19 install smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+          extensions: curl, dom, mbstring, openssl, pdo, pdo_mysql, tokenizer, xml, xmlwriter, zip
+      - name: Disposable Flarum 1.8.19 resolve/install
+        run: bash scripts/ci-flarum-install-smoke.sh
