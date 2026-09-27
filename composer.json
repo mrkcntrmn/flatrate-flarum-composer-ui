@@ -37,6 +37,9 @@
         "test:rollout": "php tests/run-rollout.php"
     },
     "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        },
         "flarum-extension": {
             "title": "Composer UI",
             "category": "feature",
