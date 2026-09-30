@@ -44,6 +44,11 @@ import {
   restoreScrollTop,
 } from './presentation/scrollInset';
 import { shouldInstallComposerPresentation } from './rolloutGate';
+import {
+  appendCoverCandidate,
+  candidateFromNativeUpload,
+  resolveActiveCoverCandidate,
+} from './presentation/coverPreview';
 
 export { reflowMobileTextEditorView, findNativeControlsFooter };
 
@@ -152,6 +157,40 @@ function isMobilePresentationForEditor(textEditor) {
     replyExpanded: getReplyExpanded(),
   });
   return mode !== 'native';
+}
+
+function isDiscussionEditor(textEditor) {
+  if (!shouldInstallComposerPresentation(app.forum)) {
+    return false;
+  }
+  const composerState = textEditor && textEditor.attrs && textEditor.attrs.composer;
+  return resolveComposerKind(composerState && composerState.body, composerTypes()) === 'discussion';
+}
+
+function editorContent(textEditor) {
+  const composerState = textEditor && textEditor.attrs && textEditor.attrs.composer;
+  const fields = composerState && composerState.fields;
+  return fields && typeof fields.content === 'function' ? String(fields.content() || '') : '';
+}
+
+function activeCoverCandidate(textEditor) {
+  return resolveActiveCoverCandidate(
+    textEditor && textEditor._flatrateCoverCandidates,
+    editorContent(textEditor)
+  );
+}
+
+function coverPreviewVnode(candidate) {
+  if (!candidate) return null;
+
+  return (
+    <div className="FlatrateComposer-coverPreview" role="group" aria-label="Discussion cover preview">
+      <div className="FlatrateComposer-coverPreviewFrame">
+        <img src={candidate.url} alt="" decoding="async" />
+      </div>
+      <div className="FlatrateComposer-coverPreviewLabel">Cover preview</div>
+    </div>
+  );
 }
 
 export function countSubmitControls(root) {
@@ -536,6 +575,40 @@ export default function extendComposer() {
     clearDiscussionInset(contentElement());
   });
 
+  // FoF Upload owns file selection, transport, storage, and editor insertion.
+  // We subscribe to its native success event only to remember eligible image
+  // identities for presentation. No second uploader or submit path is created.
+  extend(TextEditor.prototype, 'oncreate', function () {
+    if (!isDiscussionEditor(this) || this._flatrateCoverUploadHooked) {
+      return;
+    }
+
+    if (!this.uploader || typeof this.uploader.on !== 'function') {
+      return;
+    }
+
+    this._flatrateCoverUploadHooked = true;
+    this._flatrateCoverCandidates = this._flatrateCoverCandidates || [];
+
+    this.uploader.on('success', ({ file }) => {
+      const candidate = candidateFromNativeUpload(file);
+      if (!candidate) {
+        return;
+      }
+
+      this._flatrateCoverCandidates = appendCoverCandidate(
+        this._flatrateCoverCandidates,
+        candidate
+      );
+      m.redraw();
+    });
+  });
+
+  extend(TextEditor.prototype, 'onremove', function () {
+    this._flatrateCoverCandidates = null;
+    this._flatrateCoverUploadHooked = false;
+  });
+
   /**
    * Stable TextEditor tree across 767↔768 and docked↔expanded:
    *   .TextEditor
@@ -565,10 +638,16 @@ export default function extendComposer() {
     const extracted = extractNativeFooterActions(footer);
     const partitioned = partitionExtractedActions(extracted);
     const mobileFooter = renderMobileControlsFromExtracted(partitioned);
+    const coverPreview = isDiscussionEditor(this)
+      ? coverPreviewVnode(activeCoverCandidate(this))
+      : null;
 
-    // Keep original editorContainer identity/position; only replace the controls list.
+    // Keep the original editorContainer as the first child and preserve its
+    // identity. Presentation chrome is inserted only after it.
     if (Array.isArray(vnode.children) && vnode.children.length) {
-      vnode.children = [vnode.children[0], mobileFooter];
+      vnode.children = coverPreview
+        ? [vnode.children[0], coverPreview, mobileFooter]
+        : [vnode.children[0], mobileFooter];
     }
 
     return vnode;
