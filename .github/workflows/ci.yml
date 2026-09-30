@@ -5,9 +5,6 @@ on:
     branches: [main, 'feat/**']
   pull_request:
 
-permissions:
-  contents: write
-
 jobs:
   php:
     name: PHP validate + unit
@@ -70,16 +67,6 @@ jobs:
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
-      - name: Upload generated dist for source qualification
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-dist
-          path: |
-            js/dist/forum.js
-            js/dist/forum.js.map
-            js/dist/admin.js
-            js/dist/admin.js.map
-          if-no-files-found: error
       - name: Verify tracked dist is reproducible
         run: |
           git diff --exit-code -- \
