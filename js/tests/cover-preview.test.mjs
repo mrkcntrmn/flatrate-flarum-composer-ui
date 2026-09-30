@@ -82,6 +82,8 @@ test('composer source subscribes to FoF success without invoking a second upload
   const source = readFileSync(join(repoRoot, 'js/src/forum/extendComposer.js'), 'utf8');
 
   assert.match(source, /this\.uploader\.on\('success'/);
+  assert.match(source, /addEventListener\('input'/);
+  assert.match(source, /m\.redraw\(\)/);
   assert.doesNotMatch(source, /this\.uploader\.upload\(/);
   assert.match(source, /candidateFromNativeUpload\(file\)/);
   assert.match(source, /resolveActiveCoverCandidate/);

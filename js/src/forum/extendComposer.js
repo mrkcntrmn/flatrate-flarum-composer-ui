@@ -602,9 +602,31 @@ export default function extendComposer() {
       );
       m.redraw();
     });
+
+    // Native typing updates the composer stream without redrawing TextEditor.
+    // The preview is computed in view(), so content edits must request a redraw
+    // or a removed image stays on screen.
+    const textarea = this.$('textarea')[0];
+    if (textarea && this._flatrateCoverInputTarget !== textarea) {
+      if (this._flatrateCoverInputTarget && this._flatrateCoverInput) {
+        this._flatrateCoverInputTarget.removeEventListener('input', this._flatrateCoverInput);
+      }
+      this._flatrateCoverInput = () => {
+        if (typeof m !== 'undefined' && typeof m.redraw === 'function') {
+          m.redraw();
+        }
+      };
+      textarea.addEventListener('input', this._flatrateCoverInput);
+      this._flatrateCoverInputTarget = textarea;
+    }
   });
 
   extend(TextEditor.prototype, 'onremove', function () {
+    if (this._flatrateCoverInputTarget && this._flatrateCoverInput) {
+      this._flatrateCoverInputTarget.removeEventListener('input', this._flatrateCoverInput);
+    }
+    this._flatrateCoverInputTarget = null;
+    this._flatrateCoverInput = null;
     this._flatrateCoverCandidates = null;
     this._flatrateCoverUploadHooked = false;
   });
