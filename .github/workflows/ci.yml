@@ -9,6 +9,11 @@ jobs:
   php:
     name: PHP validate + unit
     runs-on: ubuntu-latest
+    # Flarum 1.8 requires advisory-affected Flysystem 1.x. Composer 2.10
+    # blocks it during dependency resolution by default. Production/runtime
+    # dependency remediation is separate from this source-validation lane.
+    env:
+      COMPOSER_POLICY_ADVISORIES_BLOCK: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -62,6 +67,8 @@ jobs:
   flarum-install-smoke:
     name: Flarum 1.8.19 install smoke
     runs-on: ubuntu-latest
+    env:
+      COMPOSER_POLICY_ADVISORIES_BLOCK: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
